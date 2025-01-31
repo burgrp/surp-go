@@ -11,7 +11,7 @@ type InMemoryProvider[T any] struct {
 	metadata map[string]string
 }
 
-func NewInMemoryProvider[T any](name string, encoder Encoder[T], decoder Decoder[T], typ string, rw bool, metadata map[string]string) *InMemoryProvider[T] {
+func NewInMemoryProvider[T any](name string, value T, encoder Encoder[T], decoder Decoder[T], typ string, rw bool, metadata map[string]string) *InMemoryProvider[T] {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
@@ -19,6 +19,7 @@ func NewInMemoryProvider[T any](name string, encoder Encoder[T], decoder Decoder
 	metadata["rw"] = fmt.Sprintf("%t", rw)
 	return &InMemoryProvider[T]{
 		name:     name,
+		value:    value,
 		encoder:  encoder,
 		decoder:  decoder,
 		metadata: metadata,
@@ -50,10 +51,10 @@ func (p *InMemoryProvider[T]) GetMetadata() map[string]string {
 	return p.metadata
 }
 
-func NewInMemoryStringProvider(name string, rw bool, metadata map[string]string) *InMemoryProvider[string] {
-	return NewInMemoryProvider[string](name, encodeString, decodeString, "string", rw, metadata)
+func NewInMemoryStringProvider(name string, value string, rw bool, metadata map[string]string) *InMemoryProvider[string] {
+	return NewInMemoryProvider[string](name, value, encodeString, decodeString, "string", rw, metadata)
 }
 
-func NewInMemoryIntProvider(name string, rw bool, metadata map[string]string) *InMemoryProvider[int] {
-	return NewInMemoryProvider[int](name, encodeInt, decodeInt, "int", rw, metadata)
+func NewInMemoryIntProvider(name string, value int, rw bool, metadata map[string]string) *InMemoryProvider[int] {
+	return NewInMemoryProvider[int](name, value, encodeInt, decodeInt, "int", rw, metadata)
 }

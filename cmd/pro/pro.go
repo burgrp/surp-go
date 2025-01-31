@@ -8,11 +8,9 @@ import (
 
 func main() {
 
-	r1 := surp.NewInMemoryStringProvider("r1", true, nil)
-	r1.SetValue("Nazdar!")
+	r1 := surp.NewInMemoryStringProvider("r1", "Nazdar!", true, nil)
 
-	r2 := surp.NewInMemoryIntProvider("r2", true, nil)
-	r2.SetValue(-10)
+	r2 := surp.NewInMemoryIntProvider("r2", 10, true, nil)
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")
 	if err != nil {
