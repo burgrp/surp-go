@@ -9,6 +9,8 @@ type InMemoryProvider[T any] struct {
 	decoder  Decoder[T]
 	rw       bool
 	metadata map[string]string
+	getterCh chan []byte
+	setterCh chan []byte
 }
 
 func NewInMemoryProvider[T any](name string, value T, encoder Encoder[T], decoder Decoder[T], typ string, rw bool, metadata map[string]string) *InMemoryProvider[T] {
@@ -24,6 +26,8 @@ func NewInMemoryProvider[T any](name string, value T, encoder Encoder[T], decode
 		decoder:  decoder,
 		metadata: metadata,
 		rw:       rw,
+		getterCh: make(chan []byte),
+		setterCh: make(chan []byte),
 	}
 }
 
@@ -37,18 +41,15 @@ func (p *InMemoryProvider[T]) GetValue() T {
 
 func (p *InMemoryProvider[T]) SetValue(value T) {
 	p.value = value
+	p.getterCh <- p.encoder(p.value)
 }
 
-func (p *InMemoryProvider[T]) GetEncodedValue() []byte {
-	return []byte(p.encoder(p.value))
+func (p *InMemoryProvider[T]) GetMetadata() (map[string]string, []byte) {
+	return p.metadata, p.encoder(p.value)
 }
 
-func (p *InMemoryProvider[T]) SetEncodedValue(value []byte) {
-	p.value = p.decoder(value)
-}
-
-func (p *InMemoryProvider[T]) GetMetadata() map[string]string {
-	return p.metadata
+func (p *InMemoryProvider[T]) GetChannels() (<-chan []byte, chan<- []byte) {
+	return p.getterCh, p.setterCh
 }
 
 func NewInMemoryStringProvider(name string, value string, rw bool, metadata map[string]string) *InMemoryProvider[string] {

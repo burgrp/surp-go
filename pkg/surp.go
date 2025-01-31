@@ -49,7 +49,7 @@ Advertise Message:
 		  [N bytes] Register name
 	      [2 bytes] Value length (V)
 	      [V bytes] Value
-		  [2 bytes] Metadata count (M)
+		  [1 bytes] Metadata count (M)
 		  [M times]:
 		    [1 byte]  Key length (K)
 		    [K bytes] Key
@@ -95,15 +95,13 @@ const (
 
 type Provider interface {
 	GetName() string
-	GetEncodedValue() []byte
-	//SetEncodedValue([]byte)
-	GetMetadata() map[string]string
+	GetChannels() (<-chan []byte, chan<- []byte)
+	GetMetadata() (map[string]string, []byte)
 }
 
 type Consumer interface {
 	GetName() string
-	//GetEncodedValue() []byte
-	SetEncodedValue([]byte)
+	GetChannels() (<-chan []byte, chan<- []byte)
 	SetMetadata(map[string]string)
 }
 
@@ -135,27 +133,34 @@ type AdvertiseMessage struct {
 	Registers      []AdvertisedRegister
 }
 
-func JoinGroup(intf string, name string) (*RegisterGroup, error) {
+type UpdateMessage struct {
+	SequenceNumber uint16
+	GroupName      string
+	RegisterName   string
+	Value          []byte
+}
 
-	in, err := net.InterfaceByName(intf)
+func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
+
+	in, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		return nil, err
 	}
 
 	group := &RegisterGroup{
-		name:       name,
+		name:       groupName,
 		rcvChannel: make(chan []byte),
 		providers:  make(map[string]Provider),
 		consumers:  make(map[string][]Consumer),
 	}
 
-	pipe, err := NewUdpPipe(in, fmt.Sprintf("%s:advertise", name), group.rcvChannel)
+	pipe, err := NewUdpPipe(in, fmt.Sprintf("%s:advertise", groupName), group.rcvChannel)
 	if err != nil {
 		return nil, err
 	}
 	group.advertise = pipe
 
-	pipe, err = NewUdpPipe(in, fmt.Sprintf("%s:update", name), group.rcvChannel)
+	pipe, err = NewUdpPipe(in, fmt.Sprintf("%s:update", groupName), group.rcvChannel)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +177,38 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 	defer group.providersMutex.Unlock()
 	for _, provider := range providers {
 		group.providers[provider.GetName()] = provider
+		go group.handleProvider(provider)
 	}
+}
+
+func (group *RegisterGroup) handleProvider(provider Provider) {
+	getterChannel, _ := provider.GetChannels()
+	for {
+		data := <-getterChannel
+		msg := &UpdateMessage{
+			SequenceNumber: 0,
+			GroupName:      group.name,
+			RegisterName:   provider.GetName(),
+			Value:          data,
+		}
+		encoded := encodeUpdateMessage(msg)
+		group.updateConn.sndChannel <- encoded
+	}
+}
+
+func encodeUpdateMessage(msg *UpdateMessage) []byte {
+	var buf bytes.Buffer
+
+	buf.WriteByte(messageTypeUpdate)
+	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
+	buf.WriteByte(byte(len(msg.GroupName)))
+	buf.WriteString(msg.GroupName)
+	binary.Write(&buf, binary.BigEndian, uint16(len(msg.RegisterName)))
+	buf.WriteString(msg.RegisterName)
+	binary.Write(&buf, binary.BigEndian, uint16(len(msg.Value)))
+	buf.Write(msg.Value)
+
+	return buf.Bytes()
 }
 
 func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
@@ -215,11 +251,69 @@ func (group *RegisterGroup) readPipes() {
 				group.handleAdvertiseMessage(advertiseMessage)
 			}
 		case messageTypeUpdate:
-			fmt.Println("Received Update message")
+			updateMessage, ok := decodeUpdateMessage(msg)
+			if ok {
+				group.handleUpdateMessage(updateMessage)
+			}
 		default:
 			fmt.Println("Received unknown message type")
 		}
 	}
+}
+
+func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
+
+	remaining := data[:]
+
+	if len(remaining) < 1 {
+		return nil, false
+	}
+	if remaining[0] != messageTypeUpdate {
+		return nil, false
+	}
+	remaining = remaining[1:]
+
+	msg := &UpdateMessage{}
+
+	if len(remaining) < 2 {
+		return nil, false
+	}
+	msg.SequenceNumber = binary.BigEndian.Uint16(remaining[:2])
+	remaining = remaining[2:]
+
+	if len(remaining) < 1 {
+		return nil, false
+	}
+	groupNameLen := int(remaining[0])
+	remaining = remaining[1:]
+	if len(remaining) < groupNameLen {
+		return nil, false
+	}
+	msg.GroupName = string(remaining[:groupNameLen])
+	remaining = remaining[groupNameLen:]
+
+	if len(remaining) < 2 {
+		return nil, false
+	}
+	registerNameLen := int(binary.BigEndian.Uint16(remaining[:2]))
+	remaining = remaining[2:]
+	if len(remaining) < registerNameLen {
+		return nil, false
+	}
+	msg.RegisterName = string(remaining[:registerNameLen])
+	remaining = remaining[registerNameLen:]
+
+	if len(remaining) < 2 {
+		return nil, false
+	}
+	valueLen := int(binary.BigEndian.Uint16(remaining[:2]))
+	remaining = remaining[2:]
+	if len(remaining) < valueLen {
+		return nil, false
+	}
+	msg.Value = remaining[:valueLen]
+
+	return msg, true
 }
 
 func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
@@ -231,12 +325,26 @@ func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
 	group.consumersMutex.Lock()
 	defer group.consumersMutex.Unlock()
 
-	for _, r := range msg.Registers {
-		consumers := group.consumers[r.RegisterName]
-		for _, c := range consumers {
-			c.SetMetadata(r.Metadata)
-			c.SetEncodedValue(r.Value)
+	for _, register := range msg.Registers {
+		consumers := group.consumers[register.RegisterName]
+		for _, consumer := range consumers {
+			consumer.SetMetadata(register.Metadata)
+			_, setterChannel := consumer.GetChannels()
+			setterChannel <- register.Value
 		}
+	}
+}
+
+func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
+
+	if group.name != msg.GroupName {
+		return
+	}
+
+	consumers := group.consumers[msg.RegisterName]
+	for _, consumer := range consumers {
+		_, setterChannel := consumer.GetChannels()
+		setterChannel <- msg.Value
 	}
 }
 
@@ -300,8 +408,8 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 		if len(remaining) < 2 {
 			return nil, false
 		}
-		metadataCount := binary.BigEndian.Uint16(remaining[:2])
-		remaining = remaining[2:]
+		metadataCount := remaining[0]
+		remaining = remaining[1:]
 		metadata := make(map[string]string, metadataCount)
 
 		for j := 0; j < int(metadataCount); j++ {
@@ -353,7 +461,7 @@ func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 		buf.WriteString(r.RegisterName)
 		binary.Write(&buf, binary.BigEndian, uint16(len(r.Value)))
 		buf.Write(r.Value)
-		binary.Write(&buf, binary.BigEndian, uint16(len(r.Metadata)))
+		buf.WriteByte(byte(len(r.Metadata)))
 		for k, v := range r.Metadata {
 			buf.WriteByte(byte(len(k)))
 			buf.WriteString(k)
@@ -372,14 +480,16 @@ func (group *RegisterGroup) advertiseLoop() {
 		//TODO send multiple registers in one message, split if necessary to fit into MTU
 		for _, p := range group.providers {
 
+			metadata, value := p.GetMetadata()
+
 			msg := &AdvertiseMessage{
 				SequenceNumber: seq,
 				GroupName:      group.name,
 				Registers: []AdvertisedRegister{
 					{
 						RegisterName: p.GetName(),
-						Value:        p.GetEncodedValue(),
-						Metadata:     p.GetMetadata(),
+						Value:        value,
+						Metadata:     metadata,
 					},
 				},
 			}
