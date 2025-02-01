@@ -109,6 +109,11 @@ type Consumer interface {
 type Encoder[T any] func(T) []byte
 type Decoder[T any] func([]byte) T
 
+type ConsumerWrapper struct {
+	consumer Consumer
+	timeout  *time.Timer
+}
+
 type RegisterGroup struct {
 	name       string
 	advertise  *UdpPipe
@@ -118,7 +123,7 @@ type RegisterGroup struct {
 	providers      map[string]Provider
 	providersMutex sync.Mutex
 
-	consumers      map[string][]Consumer
+	consumers      map[string][]*ConsumerWrapper
 	consumersMutex sync.Mutex
 }
 
@@ -133,7 +138,7 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 		name:       groupName,
 		rcvChannel: make(chan []byte),
 		providers:  make(map[string]Provider),
-		consumers:  make(map[string][]Consumer),
+		consumers:  make(map[string][]*ConsumerWrapper),
 	}
 
 	pipe, err := NewUdpPipe(in, fmt.Sprintf("%s:advertise", groupName), group.rcvChannel)
@@ -183,15 +188,21 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 	defer group.consumersMutex.Unlock()
 
 	for _, consumer := range consumers {
-		cons := group.consumers[consumer.GetName()]
-		if cons == nil {
-			cons = []Consumer{
-				consumer,
+		wrappers := group.consumers[consumer.GetName()]
+		if wrappers == nil {
+			wrappers = []*ConsumerWrapper{
+				newConsumerWrapper(consumer),
 			}
 		} else {
-			cons = append(cons, consumer)
+			wrappers = append(wrappers, newConsumerWrapper(consumer))
 		}
-		group.consumers[consumer.GetName()] = cons
+		group.consumers[consumer.GetName()] = wrappers
+	}
+}
+
+func newConsumerWrapper(consumer Consumer) *ConsumerWrapper {
+	return &ConsumerWrapper{
+		consumer: consumer,
 	}
 }
 
@@ -239,9 +250,9 @@ func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
 
 	for _, register := range msg.Registers {
 		consumers := group.consumers[register.RegisterName]
-		for _, consumer := range consumers {
-			consumer.SetMetadata(register.Metadata)
-			group.updateConsumerValue(consumer, register.Value)
+		for _, wrapper := range consumers {
+			wrapper.consumer.SetMetadata(register.Metadata)
+			group.updateConsumerValue(wrapper, register.Value)
 		}
 	}
 }
@@ -253,13 +264,20 @@ func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
 	}
 
 	consumers := group.consumers[msg.RegisterName]
-	for _, consumer := range consumers {
-		group.updateConsumerValue(consumer, msg.Value)
+	for _, wrapper := range consumers {
+		group.updateConsumerValue(wrapper, msg.Value)
 	}
 }
 
-func (group *RegisterGroup) updateConsumerValue(consumer Consumer, value []byte) {
-	_, setterChannel := consumer.GetChannels()
+func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value []byte) {
+	_, setterChannel := wrapper.consumer.GetChannels()
+
+	if wrapper.timeout != nil {
+		wrapper.timeout.Stop()
+	}
+	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
+		setterChannel <- nil
+	})
 
 	setterChannel <- value
 }
