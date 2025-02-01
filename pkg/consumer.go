@@ -1,8 +1,8 @@
 package surp
 
 type InMemoryConsumer[T comparable] struct {
-	Name      string
-	Value     T
+	name      string
+	value     T
 	encoder   Encoder[T]
 	decoder   Decoder[T]
 	metadata  map[string]string
@@ -13,7 +13,7 @@ type InMemoryConsumer[T comparable] struct {
 
 func NewInMemoryConsumer[T comparable](name string, encoder Encoder[T], decoder Decoder[T], listeners ...func(T)) *InMemoryConsumer[T] {
 	consumer := &InMemoryConsumer[T]{
-		Name:      name,
+		name:      name,
 		encoder:   encoder,
 		decoder:   decoder,
 		metadata:  map[string]string{},
@@ -28,11 +28,19 @@ func NewInMemoryConsumer[T comparable](name string, encoder Encoder[T], decoder 
 }
 
 func (p *InMemoryConsumer[T]) GetName() string {
-	return p.Name
+	return p.name
 }
 
-func (p *InMemoryConsumer[T]) GetEncodedValue() []byte {
-	return []byte(p.encoder(p.Value))
+func (p *InMemoryConsumer[T]) GetMetadata() map[string]string {
+	return p.metadata
+}
+
+func (p *InMemoryConsumer[T]) GetValue() T {
+	return p.value
+}
+
+func (p *InMemoryConsumer[T]) SetValue(value T) {
+	p.setterCh <- p.encoder(value)
 }
 
 func (p *InMemoryConsumer[T]) SetMetadata(md map[string]string) {
@@ -49,10 +57,10 @@ func (p *InMemoryConsumer[T]) readUpdates() {
 		if len(encodedValue) != 0 {
 			decodedValue = p.decoder(encodedValue)
 		}
-		if decodedValue != p.Value {
-			p.Value = decodedValue
+		if decodedValue != p.value {
+			p.value = decodedValue
 			for _, listener := range p.listeners {
-				listener(p.Value)
+				listener(p.value)
 			}
 		}
 	}
