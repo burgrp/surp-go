@@ -45,7 +45,10 @@ func (p *InMemoryConsumer[T]) GetChannels() (<-chan []byte, chan<- []byte) {
 
 func (p *InMemoryConsumer[T]) readUpdates() {
 	for encodedValue := range p.setterCh {
-		decodedValue := p.decoder(encodedValue)
+		var decodedValue T
+		if len(encodedValue) != 0 {
+			decodedValue = p.decoder(encodedValue)
+		}
 		if decodedValue != p.Value {
 			p.Value = decodedValue
 			for _, listener := range p.listeners {

@@ -89,6 +89,9 @@ import (
 const (
 	messageTypeAdvertise = 0x01
 	messageTypeUpdate    = 0x02
+	updateTimeout        = 10 * time.Second
+	minAdvertisePeriod   = 2 * time.Second
+	maxAdvertisePeriod   = 4 * time.Second
 )
 
 type Provider interface {
@@ -238,8 +241,7 @@ func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
 		consumers := group.consumers[register.RegisterName]
 		for _, consumer := range consumers {
 			consumer.SetMetadata(register.Metadata)
-			_, setterChannel := consumer.GetChannels()
-			setterChannel <- register.Value
+			group.updateConsumerValue(consumer, register.Value)
 		}
 	}
 }
@@ -252,9 +254,14 @@ func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
 
 	consumers := group.consumers[msg.RegisterName]
 	for _, consumer := range consumers {
-		_, setterChannel := consumer.GetChannels()
-		setterChannel <- msg.Value
+		group.updateConsumerValue(consumer, msg.Value)
 	}
+}
+
+func (group *RegisterGroup) updateConsumerValue(consumer Consumer, value []byte) {
+	_, setterChannel := consumer.GetChannels()
+
+	setterChannel <- value
 }
 
 func (group *RegisterGroup) advertiseLoop() {
@@ -284,7 +291,7 @@ func (group *RegisterGroup) advertiseLoop() {
 			seq++
 		}
 
-		sleep := 2*time.Second + time.Duration(rand.Intn(2000))*time.Millisecond
+		sleep := minAdvertisePeriod + time.Duration(rand.Intn(int(maxAdvertisePeriod-minAdvertisePeriod)))
 		time.Sleep(sleep)
 	}
 }
