@@ -9,7 +9,7 @@ import (
 
 func TestHelloName(t *testing.T) {
 
-	testReg := NewInMemoryStringProvider("test", "Bazar!", true, nil)
+	testReg := NewInMemoryStringProvider("test", NewValid("Bazar!"), true, nil)
 
 	providerGroup, err := JoinGroup("wlp3s0", "test")
 	require.NoError(t, err)

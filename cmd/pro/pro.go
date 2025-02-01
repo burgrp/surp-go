@@ -8,9 +8,9 @@ import (
 
 func main() {
 
-	r1 := surp.NewInMemoryStringProvider("r1", "Nazdar!", true, nil)
+	r1 := surp.NewInMemoryStringProvider("r1", surp.NewValid("Nazdar!"), true, nil)
 
-	r2 := surp.NewInMemoryIntProvider("r2", 10, true, nil)
+	r2 := surp.NewInMemoryIntProvider("r2", surp.NewValid(10), true, nil)
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")
 	if err != nil {
@@ -21,9 +21,16 @@ func main() {
 
 	regGroup.AddProviders(r1, r2)
 
+	counter := 0
+
 	for {
-		r2.SetValue(r2.GetValue() + 1)
+		var value surp.Optional[int]
+		if counter%5 != 0 {
+			value = surp.NewValid(counter)
+		}
+		r2.SetValue(value)
 		time.Sleep(1 * time.Second)
+		counter++
 	}
 
 }

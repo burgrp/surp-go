@@ -14,8 +14,8 @@ func main() {
 	// })
 
 	var r2 *surp.InMemoryConsumer[int]
-	r2 = surp.NewInMemoryIntConsumer("r2", func(v int) {
-		println(r2.GetName(), ":", v)
+	r2 = surp.NewInMemoryIntConsumer("r2", func(value surp.Optional[int]) {
+		println(r2.GetName(), ":", value.String())
 	})
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")

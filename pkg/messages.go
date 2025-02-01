@@ -7,7 +7,7 @@ import (
 
 type AdvertisedRegister struct {
 	RegisterName string
-	Value        []byte
+	Value        Optional[[]byte]
 	Metadata     map[string]string
 }
 
@@ -21,7 +21,7 @@ type UpdateMessage struct {
 	SequenceNumber uint16
 	GroupName      string
 	RegisterName   string
-	Value          []byte
+	Value          Optional[[]byte]
 }
 
 func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
@@ -36,8 +36,7 @@ func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	for _, r := range msg.Registers {
 		buf.WriteByte(byte(len(r.RegisterName)))
 		buf.WriteString(r.RegisterName)
-		binary.Write(&buf, binary.BigEndian, uint16(len(r.Value)))
-		buf.Write(r.Value)
+		writeValue(r.Value, &buf)
 		buf.WriteByte(byte(len(r.Metadata)))
 		for k, v := range r.Metadata {
 			buf.WriteByte(byte(len(k)))
@@ -48,6 +47,20 @@ func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	}
 
 	return buf.Bytes()
+}
+
+func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
+	var length int
+	var data []byte
+
+	if value.IsValid() {
+		data = value.Get()
+		length = len(data)
+	} else {
+		length = -1
+	}
+	binary.Write(buf, binary.BigEndian, uint16(length))
+	buf.Write(data)
 }
 
 func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
@@ -96,16 +109,10 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 		registerName := string(remaining[:registerNameLen])
 		remaining = remaining[registerNameLen:]
 
-		if len(remaining) < 2 {
+		value, remaining, ok := readValue(remaining)
+		if !ok {
 			return nil, false
 		}
-		valueLen := binary.BigEndian.Uint16(remaining[:2])
-		remaining = remaining[2:]
-		if len(remaining) < int(valueLen) {
-			return nil, false
-		}
-		value := remaining[:valueLen]
-		remaining = remaining[valueLen:]
 
 		if len(remaining) < 2 {
 			return nil, false
@@ -149,6 +156,24 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 	return msg, true
 }
 
+func readValue(remaining []byte) (Optional[[]byte], []byte, bool) {
+	if len(remaining) < 2 {
+		return NewInvalid[[]byte](), nil, false
+	}
+	valueLen := int16(binary.BigEndian.Uint16(remaining[:2]))
+	remaining = remaining[2:]
+	if valueLen == -1 {
+		return NewInvalid[[]byte](), remaining, true
+	}
+
+	if len(remaining) < int(valueLen) {
+		return NewInvalid[[]byte](), nil, false
+	}
+	value := remaining[:valueLen]
+	remaining = remaining[valueLen:]
+	return NewValid(value), remaining, true
+}
+
 func encodeUpdateMessage(msg *UpdateMessage) []byte {
 	var buf bytes.Buffer
 
@@ -158,8 +183,7 @@ func encodeUpdateMessage(msg *UpdateMessage) []byte {
 	buf.WriteString(msg.GroupName)
 	binary.Write(&buf, binary.BigEndian, uint16(len(msg.RegisterName)))
 	buf.WriteString(msg.RegisterName)
-	binary.Write(&buf, binary.BigEndian, uint16(len(msg.Value)))
-	buf.Write(msg.Value)
+	writeValue(msg.Value, &buf)
 
 	return buf.Bytes()
 }
@@ -206,15 +230,11 @@ func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
 	msg.RegisterName = string(remaining[:registerNameLen])
 	remaining = remaining[registerNameLen:]
 
-	if len(remaining) < 2 {
+	value, remaining, ok := readValue(remaining)
+	if !ok {
 		return nil, false
 	}
-	valueLen := int(binary.BigEndian.Uint16(remaining[:2]))
-	remaining = remaining[2:]
-	if len(remaining) < valueLen {
-		return nil, false
-	}
-	msg.Value = remaining[:valueLen]
+	msg.Value = value
 
 	return msg, true
 }

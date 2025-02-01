@@ -1,25 +1,26 @@
 package surp
 
+type UpdateListener[T any] func(Optional[T])
+
 type InMemoryConsumer[T comparable] struct {
 	name      string
-	value     T
+	value     Optional[T]
 	encoder   Encoder[T]
 	decoder   Decoder[T]
-	metadata  map[string]string
-	listeners []func(T)
-	getterCh  chan []byte
-	setterCh  chan []byte
+	metadata  Optional[map[string]string]
+	listeners []UpdateListener[T]
+	getterCh  chan Optional[[]byte]
+	setterCh  chan Optional[[]byte]
 }
 
-func NewInMemoryConsumer[T comparable](name string, encoder Encoder[T], decoder Decoder[T], listeners ...func(T)) *InMemoryConsumer[T] {
+func NewInMemoryConsumer[T comparable](name string, encoder Encoder[T], decoder Decoder[T], listeners ...UpdateListener[T]) *InMemoryConsumer[T] {
 	consumer := &InMemoryConsumer[T]{
 		name:      name,
 		encoder:   encoder,
 		decoder:   decoder,
-		metadata:  map[string]string{},
 		listeners: listeners,
-		getterCh:  make(chan []byte),
-		setterCh:  make(chan []byte),
+		getterCh:  make(chan Optional[[]byte]),
+		setterCh:  make(chan Optional[[]byte]),
 	}
 
 	go consumer.readUpdates()
@@ -31,34 +32,37 @@ func (p *InMemoryConsumer[T]) GetName() string {
 	return p.name
 }
 
-func (p *InMemoryConsumer[T]) GetMetadata() map[string]string {
+func (p *InMemoryConsumer[T]) GetMetadata() Optional[map[string]string] {
 	return p.metadata
 }
 
-func (p *InMemoryConsumer[T]) GetValue() T {
+func (p *InMemoryConsumer[T]) GetValue() Optional[T] {
 	return p.value
 }
 
-func (p *InMemoryConsumer[T]) SetValue(value T) {
-	p.setterCh <- p.encoder(value)
+func (p *InMemoryConsumer[T]) SetValue(value Optional[T]) {
+	if !value.IsValid() {
+		p.setterCh <- NewInvalid[[]byte]()
+	}
+	p.setterCh <- NewValid(p.encoder(value.Get()))
 }
 
 func (p *InMemoryConsumer[T]) SetMetadata(md map[string]string) {
-	p.metadata = md
+	p.metadata = NewValid(md)
 }
 
-func (p *InMemoryConsumer[T]) GetChannels() (<-chan []byte, chan<- []byte) {
+func (p *InMemoryConsumer[T]) GetChannels() (<-chan Optional[[]byte], chan<- Optional[[]byte]) {
 	return p.getterCh, p.setterCh
 }
 
 func (p *InMemoryConsumer[T]) readUpdates() {
 	for encodedValue := range p.setterCh {
-		var decodedValue T
-		if len(encodedValue) != 0 {
-			decodedValue = p.decoder(encodedValue)
+		var newValue Optional[T]
+		if encodedValue.IsValid() {
+			newValue = NewValid(p.decoder(encodedValue.Get()))
 		}
-		if decodedValue != p.value {
-			p.value = decodedValue
+		if newValue != p.value {
+			p.value = newValue
 			for _, listener := range p.listeners {
 				listener(p.value)
 			}
@@ -66,10 +70,10 @@ func (p *InMemoryConsumer[T]) readUpdates() {
 	}
 }
 
-func NewInMemoryStringConsumer(name string, listeners ...func(string)) *InMemoryConsumer[string] {
+func NewInMemoryStringConsumer(name string, listeners ...UpdateListener[string]) *InMemoryConsumer[string] {
 	return NewInMemoryConsumer[string](name, encodeString, decodeString, listeners...)
 }
 
-func NewInMemoryIntConsumer(name string, listeners ...func(int)) *InMemoryConsumer[int] {
+func NewInMemoryIntConsumer(name string, listeners ...UpdateListener[int]) *InMemoryConsumer[int] {
 	return NewInMemoryConsumer[int](name, encodeInt, decodeInt, listeners...)
 }

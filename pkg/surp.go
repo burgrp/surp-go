@@ -47,7 +47,7 @@ Advertise Message:
 		  [G bytes] Group name
 		  [1 byte]  Register name length (N)
 		  [N bytes] Register name
-	      [2 bytes] Value length (V)
+	      [2 bytes] Value length (V) (-1 if undefined/null, in which case the following array is empty)
 	      [V bytes] Value
 		  [1 bytes] Metadata count (M)
 		  [M times]:
@@ -64,7 +64,7 @@ Update Message:
 	[G bytes] Group name
 	[2 bytes] Register name length (N)
 	[N bytes] Register name
-	[2 bytes] Value length (V)
+	[2 bytes] Value length (V) (see Value length in Advertise message)
 	[V bytes] Value
 
 Implementation Notes:
@@ -96,13 +96,13 @@ const (
 
 type Provider interface {
 	GetName() string
-	GetChannels() (<-chan []byte, chan<- []byte)
-	GetMetadata() (map[string]string, []byte)
+	GetChannels() (<-chan Optional[[]byte], chan<- Optional[[]byte])
+	GetMetadata() (map[string]string, Optional[[]byte])
 }
 
 type Consumer interface {
 	GetName() string
-	GetChannels() (<-chan []byte, chan<- []byte)
+	GetChannels() (<-chan Optional[[]byte], chan<- Optional[[]byte])
 	SetMetadata(map[string]string)
 }
 
@@ -269,14 +269,14 @@ func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
 	}
 }
 
-func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value []byte) {
+func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value Optional[[]byte]) {
 	_, setterChannel := wrapper.consumer.GetChannels()
 
 	if wrapper.timeout != nil {
 		wrapper.timeout.Stop()
 	}
 	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
-		setterChannel <- nil
+		setterChannel <- NewInvalid[[]byte]()
 	})
 
 	setterChannel <- value
