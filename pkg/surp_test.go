@@ -1,17 +1,19 @@
-package surp
+package surp_test
 
 import (
 	"testing"
 	"time"
 
+	surp "github.com/burgrp-go/surp/pkg"
+	"github.com/burgrp-go/surp/pkg/provider"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHelloName(t *testing.T) {
 
-	testReg := NewInMemoryStringProvider("test", NewValid("Bazar!"), true, nil)
+	testReg := provider.NewStringRegister("test", surp.NewValid("Bazar!"), true, nil)
 
-	providerGroup, err := JoinGroup("wlp3s0", "test")
+	providerGroup, err := surp.JoinGroup("wlp3s0", "test")
 	require.NoError(t, err)
 	require.NotNil(t, providerGroup)
 

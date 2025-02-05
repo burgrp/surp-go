@@ -4,13 +4,14 @@ import (
 	"time"
 
 	surp "github.com/burgrp-go/surp/pkg"
+	"github.com/burgrp-go/surp/pkg/provider"
 )
 
 func main() {
 
-	r1 := surp.NewInMemoryStringProvider("r1", surp.NewValid("Nazdar!"), true, nil)
+	r1 := provider.NewStringRegister("r1", surp.NewValid("Nazdar!"), true, nil)
 
-	r2 := surp.NewInMemoryIntProvider("r2", surp.NewValid(10), true, nil)
+	r2 := provider.NewIntRegister("r2", surp.NewValid(10), true, nil)
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")
 	if err != nil {

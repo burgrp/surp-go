@@ -4,6 +4,7 @@ import (
 	"time"
 
 	surp "github.com/burgrp-go/surp/pkg"
+	"github.com/burgrp-go/surp/pkg/consumer"
 )
 
 func main() {
@@ -13,8 +14,8 @@ func main() {
 	// 	println(r1.Name, ":", v)
 	// })
 
-	var r2 *surp.InMemoryConsumer[int]
-	r2 = surp.NewInMemoryIntConsumer("r2", func(value surp.Optional[int]) {
+	var r2 *consumer.Register[int]
+	r2 = consumer.NewIntRegister("r2", func(value surp.Optional[int]) {
 		println(r2.GetName(), ":", value.String())
 	})
 
