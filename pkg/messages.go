@@ -6,14 +6,15 @@ import (
 )
 
 type AdvertisedRegister struct {
-	RegisterName string
-	Value        Optional[[]byte]
-	Metadata     map[string]string
+	Name     string
+	Value    Optional[[]byte]
+	Metadata map[string]string
 }
 
 type AdvertiseMessage struct {
 	SequenceNumber uint16
 	GroupName      string
+	Port           uint16
 	Registers      []AdvertisedRegister
 }
 
@@ -24,6 +25,8 @@ type UpdateMessage struct {
 	Value          Optional[[]byte]
 }
 
+type SetMessage UpdateMessage
+
 func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	var buf bytes.Buffer
 
@@ -31,11 +34,12 @@ func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
 	buf.WriteByte(byte(len(msg.GroupName)))
 	buf.WriteString(msg.GroupName)
-	binary.Write(&buf, binary.BigEndian, uint16(len(msg.Registers)))
+	binary.Write(&buf, binary.BigEndian, msg.Port)
 
+	binary.Write(&buf, binary.BigEndian, uint16(len(msg.Registers)))
 	for _, r := range msg.Registers {
-		buf.WriteByte(byte(len(r.RegisterName)))
-		buf.WriteString(r.RegisterName)
+		buf.WriteByte(byte(len(r.Name)))
+		buf.WriteString(r.Name)
 		writeValue(r.Value, &buf)
 		buf.WriteByte(byte(len(r.Metadata)))
 		for k, v := range r.Metadata {
@@ -94,6 +98,12 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 	msg.GroupName = string(remaining[:groupNameLen])
 	remaining = remaining[groupNameLen:]
 
+	if len(remaining) < 2 {
+		return nil, false
+	}
+	msg.Port = binary.BigEndian.Uint16(remaining[:2])
+	remaining = remaining[2:]
+
 	registerCount := binary.BigEndian.Uint16(remaining[:2])
 	remaining = remaining[2:]
 
@@ -147,9 +157,9 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 		}
 
 		msg.Registers = append(msg.Registers, AdvertisedRegister{
-			RegisterName: registerName,
-			Value:        value,
-			Metadata:     metadata,
+			Name:     registerName,
+			Value:    value,
+			Metadata: metadata,
 		})
 	}
 
@@ -174,10 +184,10 @@ func readValue(remaining []byte) (Optional[[]byte], []byte, bool) {
 	return NewValid(value), remaining, true
 }
 
-func encodeUpdateMessage(msg *UpdateMessage) []byte {
+func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
 	var buf bytes.Buffer
 
-	buf.WriteByte(messageTypeUpdate)
+	buf.WriteByte(messageType)
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
 	buf.WriteByte(byte(len(msg.GroupName)))
 	buf.WriteString(msg.GroupName)
@@ -188,14 +198,14 @@ func encodeUpdateMessage(msg *UpdateMessage) []byte {
 	return buf.Bytes()
 }
 
-func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
+func decodeValueMessage(messageType byte, data []byte) (*UpdateMessage, bool) {
 
 	remaining := data[:]
 
 	if len(remaining) < 1 {
 		return nil, false
 	}
-	if remaining[0] != messageTypeUpdate {
+	if remaining[0] != messageType {
 		return nil, false
 	}
 	remaining = remaining[1:]
@@ -230,11 +240,29 @@ func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
 	msg.RegisterName = string(remaining[:registerNameLen])
 	remaining = remaining[registerNameLen:]
 
-	value, remaining, ok := readValue(remaining)
+	value, _, ok := readValue(remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.Value = value
 
 	return msg, true
+}
+
+func encodeUpdateMessage(msg *UpdateMessage) []byte {
+	return encodeValueMessage(messageTypeUpdate, (*UpdateMessage)(msg))
+}
+
+func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
+	msg, ok := decodeValueMessage(messageTypeUpdate, data)
+	return msg, ok
+}
+
+func encodeSetMessage(msg *SetMessage) []byte {
+	return encodeValueMessage(messageTypeSet, (*UpdateMessage)(msg))
+}
+
+func decodeSetMessage(data []byte) (*SetMessage, bool) {
+	msg, ok := decodeValueMessage(messageTypeSet, data)
+	return (*SetMessage)(msg), ok
 }

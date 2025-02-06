@@ -44,9 +44,9 @@ func (p *Register[T]) GetValue() surp.Optional[T] {
 
 func (p *Register[T]) SetValue(value surp.Optional[T]) {
 	if !value.IsValid() {
-		p.setterCh <- surp.NewInvalid[[]byte]()
+		p.getterCh <- surp.NewInvalid[[]byte]()
 	}
-	p.setterCh <- surp.NewValid(p.encoder(value.Get()))
+	p.getterCh <- surp.NewValid(p.encoder(value.Get()))
 }
 
 func (p *Register[T]) SetMetadata(md map[string]string) {

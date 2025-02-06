@@ -12,14 +12,19 @@ const (
 	ipv6Address       = "ff02::cafe:face:1dea:1"
 )
 
-type UdpPipe struct {
-	addr       *net.UDPAddr
-	conn       *net.UDPConn
-	rcvChannel chan []byte
-	sndChannel chan []byte
+type MessageAndAddr struct {
+	Message []byte
+	Addr    *net.UDPAddr
 }
 
-func NewUdpPipe(netInterface *net.Interface, pipeName string, rcvChannel chan []byte) (*UdpPipe, error) {
+type UdpPipe struct {
+	conn       *net.UDPConn
+	addr       *net.UDPAddr
+	rcvChannel chan MessageAndAddr
+	sndChannel chan MessageAndAddr
+}
+
+func NewMulticastPipe(netInterface *net.Interface, pipeName string, rcvChannel chan MessageAndAddr) (*UdpPipe, error) {
 
 	port := 1024 + int(CalculateHash(pipeName)&0xBBFF) // this gives us a port in the range 1024-49151
 
@@ -54,10 +59,29 @@ func NewUdpPipe(netInterface *net.Interface, pipeName string, rcvChannel chan []
 	}
 
 	pipe := &UdpPipe{
+		conn:       conn,
 		addr:       addr,
+		rcvChannel: rcvChannel,
+		sndChannel: make(chan MessageAndAddr),
+	}
+
+	go pipe.read()
+	go pipe.write()
+
+	return pipe, nil
+}
+
+func NewUnicastPipe(netInterface *net.Interface, rcvChannel chan MessageAndAddr) (*UdpPipe, error) {
+
+	conn, err := net.ListenUDP("udp6", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	pipe := &UdpPipe{
 		conn:       conn,
 		rcvChannel: rcvChannel,
-		sndChannel: make(chan []byte),
+		sndChannel: make(chan MessageAndAddr),
 	}
 
 	go pipe.read()
@@ -69,18 +93,21 @@ func NewUdpPipe(netInterface *net.Interface, pipeName string, rcvChannel chan []
 func (pipe *UdpPipe) read() {
 	for {
 		buf := make([]byte, maxUdpMessageSize)
-		n, _, err := pipe.conn.ReadFromUDP(buf)
+		n, src, err := pipe.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
 		}
-		pipe.rcvChannel <- buf[:n]
+		pipe.rcvChannel <- MessageAndAddr{
+			Message: buf[:n],
+			Addr:    &net.UDPAddr{IP: src.IP, Port: src.Port},
+		}
 	}
 }
 
 func (pipe *UdpPipe) write() {
 	for {
-		buf := <-pipe.sndChannel
-		_, err := pipe.conn.WriteToUDP(buf, pipe.addr)
+		m := <-pipe.sndChannel
+		_, err := pipe.conn.WriteToUDP(m.Message, m.Addr)
 		if err != nil {
 			return
 		}

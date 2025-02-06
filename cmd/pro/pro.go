@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	r1 := provider.NewStringRegister("r1", surp.NewValid("Nazdar!"), true, nil)
+	//r1 := provider.NewStringRegister("r1", surp.NewValid("Nazdar!"), true, nil)
 
 	r2 := provider.NewIntRegister("r2", surp.NewValid(10), true, nil)
 
@@ -20,7 +20,7 @@ func main() {
 
 	defer regGroup.Close()
 
-	regGroup.AddProviders(r1, r2)
+	regGroup.AddProviders(r2)
 
 	counter := 0
 

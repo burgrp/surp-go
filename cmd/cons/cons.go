@@ -28,5 +28,8 @@ func main() {
 
 	regGroup.AddConsumers(r2)
 
-	time.Sleep(10000 * time.Second)
+	for {
+		r2.SetValue(surp.NewValid(0))
+		time.Sleep(7 * time.Second)
+	}
 }

@@ -24,7 +24,8 @@ func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encode
 
 	metadata["type"] = typ
 	metadata["rw"] = fmt.Sprintf("%t", rw)
-	return &Register[T]{
+
+	reg := &Register[T]{
 		name:     name,
 		value:    value,
 		encoder:  encoder,
@@ -34,34 +35,52 @@ func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encode
 		getterCh: make(chan surp.Optional[[]byte]),
 		setterCh: make(chan surp.Optional[[]byte]),
 	}
+
+	go reg.readSets()
+
+	return reg
 }
 
-func (p *Register[T]) GetName() string {
-	return p.name
+func (reg *Register[T]) readSets() {
+	for encodedValue := range reg.setterCh {
+		if !reg.rw {
+			continue
+		}
+		if !encodedValue.IsValid() {
+			reg.getterCh <- surp.NewInvalid[[]byte]()
+			continue
+		}
+		reg.value = surp.NewValid(reg.decoder(encodedValue.Get()))
+		reg.getterCh <- reg.getEncodedValue()
+	}
 }
 
-func (p *Register[T]) GetValue() surp.Optional[T] {
-	return p.value
+func (reg *Register[T]) GetName() string {
+	return reg.name
 }
 
-func (p *Register[T]) getEncodedValue() surp.Optional[[]byte] {
-	if !p.value.IsValid() {
+func (reg *Register[T]) GetValue() surp.Optional[T] {
+	return reg.value
+}
+
+func (reg *Register[T]) getEncodedValue() surp.Optional[[]byte] {
+	if !reg.value.IsValid() {
 		return surp.NewInvalid[[]byte]()
 	}
-	return surp.NewValid(p.encoder(p.value.Get()))
+	return surp.NewValid(reg.encoder(reg.value.Get()))
 }
 
-func (p *Register[T]) SetValue(value surp.Optional[T]) {
-	p.value = value
-	p.getterCh <- p.getEncodedValue()
+func (reg *Register[T]) SetValue(value surp.Optional[T]) {
+	reg.value = value
+	reg.getterCh <- reg.getEncodedValue()
 }
 
-func (p *Register[T]) GetMetadata() (map[string]string, surp.Optional[[]byte]) {
-	return p.metadata, p.getEncodedValue()
+func (reg *Register[T]) GetMetadata() (map[string]string, surp.Optional[[]byte]) {
+	return reg.metadata, reg.getEncodedValue()
 }
 
-func (p *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp.Optional[[]byte]) {
-	return p.getterCh, p.setterCh
+func (reg *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp.Optional[[]byte]) {
+	return reg.getterCh, reg.setterCh
 }
 
 func NewStringRegister(name string, value surp.Optional[string], rw bool, metadata map[string]string) *Register[string] {

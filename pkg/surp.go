@@ -38,23 +38,24 @@ Addressing Scheme:
 Message Structure (Binary):
 Advertise Message:
 
-		[4 bytes]  Magic number "SURP"
-		[1 byte]  Message type (0x01)
-		[2 bytes] Sequence number
-		[2 bytes] Register count (C)
-		[C times]:
-		  [1 byte]  Group name length (G)
-		  [G bytes] Group name
-		  [1 byte]  Register name length (N)
-		  [N bytes] Register name
-	      [2 bytes] Value length (V) (-1 if undefined/null, in which case the following array is empty)
-	      [V bytes] Value
-		  [1 bytes] Metadata count (M)
-		  [M times]:
-		    [1 byte]  Key length (K)
-		    [K bytes] Key
-		    [1 byte]  Value length (V)
-		    [V bytes] Value
+	[4 bytes]  Magic number "SURP"
+	[1 byte]  Message type (0x01)
+	[2 bytes] Sequence number
+	[2 bytes] Port for SET messages; 0 if all registers are read-only
+	[2 bytes] Register count (C)
+	[C times]:
+		[1 byte]  Group name length (G)
+		[G bytes] Group name
+		[1 byte]  Register name length (N)
+		[N bytes] Register name
+		[2 bytes] Value length (V) (-1 if undefined/null, in which case the following array is empty)
+		[V bytes] Value
+		[1 bytes] Metadata count (M)
+		[M times]:
+			[1 byte]  Key length (K)
+			[K bytes] Key
+			[1 byte]  Value length (V)
+			[V bytes] Value
 
 Update Message:
 
@@ -89,6 +90,7 @@ import (
 const (
 	messageTypeAdvertise = 0x01
 	messageTypeUpdate    = 0x02
+	messageTypeSet       = 0x03
 	updateTimeout        = 10 * time.Second
 	minAdvertisePeriod   = 2 * time.Second
 	maxAdvertisePeriod   = 4 * time.Second
@@ -112,13 +114,18 @@ type Decoder[T any] func([]byte) T
 type ConsumerWrapper struct {
 	consumer Consumer
 	timeout  *time.Timer
+	getter   <-chan Optional[[]byte]
+	setter   chan<- Optional[[]byte]
+	setIP    net.IP
+	setPort  uint16
 }
 
 type RegisterGroup struct {
-	name       string
-	advertise  *UdpPipe
-	updateConn *UdpPipe
-	rcvChannel chan []byte
+	name          string
+	advertisePipe *UdpPipe
+	updatePipe    *UdpPipe
+	setPipe       *UdpPipe
+	rcvChannel    chan MessageAndAddr
 
 	providers      map[string]Provider
 	providersMutex sync.Mutex
@@ -136,22 +143,28 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 
 	group := &RegisterGroup{
 		name:       groupName,
-		rcvChannel: make(chan []byte),
+		rcvChannel: make(chan MessageAndAddr),
 		providers:  make(map[string]Provider),
 		consumers:  make(map[string][]*ConsumerWrapper),
 	}
 
-	pipe, err := NewUdpPipe(in, fmt.Sprintf("%s:advertise", groupName), group.rcvChannel)
+	pipe, err := NewMulticastPipe(in, fmt.Sprintf("%s:advertise", groupName), group.rcvChannel)
 	if err != nil {
 		return nil, err
 	}
-	group.advertise = pipe
+	group.advertisePipe = pipe
 
-	pipe, err = NewUdpPipe(in, fmt.Sprintf("%s:update", groupName), group.rcvChannel)
+	pipe, err = NewMulticastPipe(in, fmt.Sprintf("%s:update", groupName), group.rcvChannel)
 	if err != nil {
 		return nil, err
 	}
-	group.updateConn = pipe
+	group.updatePipe = pipe
+
+	pipe, err = NewUnicastPipe(in, group.rcvChannel)
+	if err != nil {
+		return nil, err
+	}
+	group.setPipe = pipe
 
 	go group.readPipes()
 	go group.advertiseLoop()
@@ -179,7 +192,7 @@ func (group *RegisterGroup) handleProvider(provider Provider) {
 			Value:          data,
 		}
 		encoded := encodeUpdateMessage(msg)
-		group.updateConn.sndChannel <- encoded
+		group.updatePipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: group.updatePipe.addr}
 	}
 }
 
@@ -188,31 +201,50 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 	defer group.consumersMutex.Unlock()
 
 	for _, consumer := range consumers {
+
+		getter, setter := consumer.GetChannels()
+
+		wrapper := &ConsumerWrapper{
+			consumer: consumer,
+			getter:   getter,
+			setter:   setter,
+		}
+
+		go group.handleConsumerWrapper(wrapper)
+
 		wrappers := group.consumers[consumer.GetName()]
 		if wrappers == nil {
-			wrappers = []*ConsumerWrapper{
-				newConsumerWrapper(consumer),
-			}
+			wrappers = []*ConsumerWrapper{wrapper}
 		} else {
-			wrappers = append(wrappers, newConsumerWrapper(consumer))
+			wrappers = append(wrappers, wrapper)
 		}
 		group.consumers[consumer.GetName()] = wrappers
 	}
 }
 
-func newConsumerWrapper(consumer Consumer) *ConsumerWrapper {
-	return &ConsumerWrapper{
-		consumer: consumer,
+func (group *RegisterGroup) handleConsumerWrapper(wrapper *ConsumerWrapper) {
+	for value := range wrapper.getter {
+		port := wrapper.setPort
+		if port != 0 {
+			message := &SetMessage{
+				SequenceNumber: 0,
+				GroupName:      group.name,
+				RegisterName:   wrapper.consumer.GetName(),
+				Value:          value,
+			}
+			encoded := encodeSetMessage(message)
+			group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
+		}
 	}
 }
 
 func (group *RegisterGroup) Close() error {
-	err := group.advertise.Close()
+	err := group.advertisePipe.Close()
 	if err != nil {
 		return err
 	}
 
-	err = group.updateConn.Close()
+	err = group.updatePipe.Close()
 	if err != nil {
 		return err
 	}
@@ -221,25 +253,32 @@ func (group *RegisterGroup) Close() error {
 }
 
 func (group *RegisterGroup) readPipes() {
-	for msg := range group.rcvChannel {
-		switch msg[0] {
+	for m := range group.rcvChannel {
+		switch m.Message[0] {
 		case messageTypeAdvertise:
-			advertiseMessage, ok := decodeAdvertiseMessage(msg)
+			advertiseMessage, ok := decodeAdvertiseMessage(m.Message)
 			if ok {
-				group.handleAdvertiseMessage(advertiseMessage)
+				group.handleAdvertiseMessage(advertiseMessage, m.Addr)
 			}
 		case messageTypeUpdate:
-			updateMessage, ok := decodeUpdateMessage(msg)
+			updateMessage, ok := decodeUpdateMessage(m.Message)
 			if ok {
 				group.handleUpdateMessage(updateMessage)
 			}
+
+		case messageTypeSet:
+			setMessage, ok := decodeSetMessage(m.Message)
+			if ok {
+				group.handleSetMessage(setMessage)
+			}
+
 		default:
 			fmt.Println("Received unknown message type")
 		}
 	}
 }
 
-func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
+func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage, ip *net.UDPAddr) {
 
 	if group.name != msg.GroupName {
 		return
@@ -249,8 +288,10 @@ func (group *RegisterGroup) handleAdvertiseMessage(msg *AdvertiseMessage) {
 	defer group.consumersMutex.Unlock()
 
 	for _, register := range msg.Registers {
-		consumers := group.consumers[register.RegisterName]
+		consumers := group.consumers[register.Name]
 		for _, wrapper := range consumers {
+			wrapper.setIP = ip.IP
+			wrapper.setPort = msg.Port
 			wrapper.consumer.SetMetadata(register.Metadata)
 			group.updateConsumerValue(wrapper, register.Value)
 		}
@@ -269,20 +310,33 @@ func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
 	}
 }
 
+func (group *RegisterGroup) handleSetMessage(msg *SetMessage) {
+
+	if group.name != msg.GroupName {
+		return
+	}
+
+	provider := group.providers[msg.RegisterName]
+	if provider != nil {
+		_, setter := provider.GetChannels()
+		setter <- msg.Value
+	}
+}
+
 func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value Optional[[]byte]) {
-	_, setterChannel := wrapper.consumer.GetChannels()
 
 	if wrapper.timeout != nil {
 		wrapper.timeout.Stop()
 	}
 	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
-		setterChannel <- NewInvalid[[]byte]()
+		wrapper.setter <- NewInvalid[[]byte]()
 	})
 
-	setterChannel <- value
+	wrapper.setter <- value
 }
 
 func (group *RegisterGroup) advertiseLoop() {
+	port := group.setPipe.conn.LocalAddr().(*net.UDPAddr).Port
 	seq := uint16(0)
 	for {
 
@@ -294,17 +348,18 @@ func (group *RegisterGroup) advertiseLoop() {
 			msg := &AdvertiseMessage{
 				SequenceNumber: seq,
 				GroupName:      group.name,
+				Port:           uint16(port),
 				Registers: []AdvertisedRegister{
 					{
-						RegisterName: p.GetName(),
-						Value:        value,
-						Metadata:     metadata,
+						Name:     p.GetName(),
+						Value:    value,
+						Metadata: metadata,
 					},
 				},
 			}
 
 			data := encodeAdvertiseMessage(msg)
-			group.advertise.sndChannel <- data
+			group.advertisePipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.advertisePipe.addr}
 
 			seq++
 		}
