@@ -74,29 +74,56 @@ func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
 	buf.Write(data)
 }
 
-func readByte(data []byte) (byte, []byte, bool) {
-	if len(data) < 1 {
-		return 0, nil, false
+func readByte(remaining *[]byte) (byte, bool) {
+	if len(*remaining) < 1 {
+		return 0, false
 	}
-	return data[0], data[1:], true
+	result := (*remaining)[0]
+	*remaining = (*remaining)[1:]
+	return result, true
 }
 
-func readUint16(data []byte) (uint16, []byte, bool) {
-	if len(data) < 2 {
-		return 0, nil, false
+func readUint16(remaining *[]byte) (uint16, bool) {
+	if len(*remaining) < 2 {
+		return 0, false
 	}
-	return binary.BigEndian.Uint16(data[:2]), data[2:], true
+	result := binary.BigEndian.Uint16((*remaining)[:2])
+	*remaining = (*remaining)[2:]
+	return result, true
 }
 
-func readString(data []byte) (string, []byte, bool) {
-	if len(data) < 1 {
-		return "", nil, false
+func readString(remaining *[]byte) (string, bool) {
+	if len(*remaining) < 1 {
+		return "", false
 	}
-	length := int(data[0])
-	if len(data) < length+1 {
-		return "", nil, false
+	length := int((*remaining)[0])
+	if len(*remaining) < length+1 {
+		return "", false
 	}
-	return string(data[1 : length+1]), data[length+1:], true
+	result := string((*remaining)[1 : length+1])
+	*remaining = (*remaining)[length+1:]
+	return result, true
+}
+
+func readValue(remaining *[]byte) (Optional[[]byte], bool) {
+
+	value := NewInvalid[[]byte]()
+
+	valueLen, ok := readUint16(remaining)
+	if !ok {
+		return value, false
+	}
+
+	if valueLen == 0xFFFF {
+		return value, true
+	}
+
+	if len(*remaining) < int(valueLen) {
+		return value, false
+	}
+	value = NewValid((*remaining)[:valueLen])
+	*remaining = (*remaining)[valueLen:]
+	return value, true
 }
 
 func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
@@ -105,25 +132,25 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 
 	msg := &AdvertiseMessage{}
 
-	sequenceNumber, remaining, ok := readUint16(remaining)
+	sequenceNumber, ok := readUint16(&remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.SequenceNumber = sequenceNumber
 
-	groupName, remaining, ok := readString(remaining)
+	groupName, ok := readString(&remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.GroupName = groupName
 
-	port, remaining, ok := readUint16(remaining)
+	port, ok := readUint16(&remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.Port = port
 
-	registerCount, remaining, ok := readByte(remaining)
+	registerCount, ok := readByte(&remaining)
 	if !ok {
 		return nil, false
 	}
@@ -132,17 +159,17 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 
 	for i := 0; i < int(registerCount); i++ {
 
-		registerName, remaining, ok := readString(remaining)
+		registerName, ok := readString(&remaining)
 		if !ok {
 			return nil, false
 		}
 
-		value, remaining, ok := readValue(remaining)
+		value, ok := readValue(&remaining)
 		if !ok {
 			return nil, false
 		}
 
-		metadataCount, remaining, ok := readByte(remaining)
+		metadataCount, ok := readByte(&remaining)
 		if !ok {
 			return nil, false
 		}
@@ -151,14 +178,12 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 
 		for j := 0; j < int(metadataCount); j++ {
 
-			var key string
-			key, remaining, ok = readString(remaining)
+			key, ok := readString(&remaining)
 			if !ok {
 				return nil, false
 			}
 
-			var val string
-			val, remaining, ok = readString(remaining)
+			val, ok := readString(&remaining)
 			if !ok {
 				return nil, false
 			}
@@ -174,24 +199,6 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 	}
 
 	return msg, true
-}
-
-func readValue(remaining []byte) (Optional[[]byte], []byte, bool) {
-	if len(remaining) < 2 {
-		return NewInvalid[[]byte](), nil, false
-	}
-	valueLen := int16(binary.BigEndian.Uint16(remaining[:2]))
-	remaining = remaining[2:]
-	if valueLen == -1 {
-		return NewInvalid[[]byte](), remaining, true
-	}
-
-	if len(remaining) < int(valueLen) {
-		return NewInvalid[[]byte](), nil, false
-	}
-	value := remaining[:valueLen]
-	remaining = remaining[valueLen:]
-	return NewValid(value), remaining, true
 }
 
 func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
@@ -212,25 +219,25 @@ func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
 	return buf.Bytes()
 }
 
-func decodeValueMessage(messageType byte, data []byte) (*UpdateMessage, bool) {
+func decodeValueMessage(data []byte) (*UpdateMessage, bool) {
 
 	remaining := data[:]
 
 	msg := &UpdateMessage{}
 
-	sequenceNumber, remaining, ok := readUint16(remaining)
+	sequenceNumber, ok := readUint16(&remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.SequenceNumber = sequenceNumber
 
-	groupName, remaining, ok := readString(remaining)
+	groupName, ok := readString(&remaining)
 	if !ok {
 		return nil, false
 	}
 	msg.GroupName = groupName
 
-	registerCount, remaining, ok := readByte(remaining)
+	registerCount, ok := readByte(&remaining)
 	if !ok {
 		return nil, false
 	}
@@ -239,14 +246,12 @@ func decodeValueMessage(messageType byte, data []byte) (*UpdateMessage, bool) {
 
 	for i := 0; i < int(registerCount); i++ {
 
-		var name string
-		name, remaining, ok = readString(remaining)
+		name, ok := readString(&remaining)
 		if !ok {
 			return nil, false
 		}
 
-		var value Optional[[]byte]
-		value, remaining, ok = readValue(remaining)
+		value, ok := readValue(&remaining)
 		if !ok {
 			return nil, false
 		}
@@ -266,7 +271,7 @@ func encodeUpdateMessage(msg *UpdateMessage) []byte {
 }
 
 func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
-	msg, ok := decodeValueMessage(messageTypeUpdate, data)
+	msg, ok := decodeValueMessage(data)
 	return msg, ok
 }
 
@@ -275,6 +280,6 @@ func encodeSetMessage(msg *SetMessage) []byte {
 }
 
 func decodeSetMessage(data []byte) (*SetMessage, bool) {
-	msg, ok := decodeValueMessage(messageTypeSet, data)
+	msg, ok := decodeValueMessage(data)
 	return (*SetMessage)(msg), ok
 }
