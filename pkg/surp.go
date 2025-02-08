@@ -36,7 +36,7 @@ Advertise Message:
 	[1 byte]  Message type (0x01)
 	[2 bytes] Sequence number
 	[2 bytes] Port for SET messages; 0 if all registers are read-only
-	[2 bytes] Register count (C)
+	[1 bytes] Register count (C)
 	[C times]:
 		[1 byte]  Group name length (G)
 		[G bytes] Group name
@@ -58,10 +58,12 @@ Update Message:
 	[2 bytes] Sequence number
 	[1 byte]  Group name length (G)
 	[G bytes] Group name
-	[2 bytes] Register name length (N)
-	[N bytes] Register name
-	[2 bytes] Value length (V) (see Value length in Advertise message)
-	[V bytes] Value
+	[1 byte] Register count (C)
+	[C times]:
+		[1 bytes] Register name length (N)
+		[N bytes] Register name
+		[2 bytes] Value length (V) (see Value length in Advertise message)
+		[V bytes] Value
 
 Implementation Notes:
 1. Security model assumes protected network layer
@@ -183,8 +185,12 @@ func (group *RegisterGroup) handleProvider(provider Provider) {
 		msg := &UpdateMessage{
 			SequenceNumber: 0,
 			GroupName:      group.name,
-			RegisterName:   provider.GetName(),
-			Value:          data,
+			Registers: []UpdatedRegister{
+				{
+					Name:  provider.GetName(),
+					Value: data,
+				},
+			},
 		}
 		encoded := encodeUpdateMessage(msg)
 		group.updatePipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: group.updatePipe.addr}
@@ -224,8 +230,12 @@ func (group *RegisterGroup) handleConsumerWrapper(wrapper *ConsumerWrapper) {
 			message := &SetMessage{
 				SequenceNumber: 0,
 				GroupName:      group.name,
-				RegisterName:   wrapper.consumer.GetName(),
-				Value:          value,
+				Registers: []UpdatedRegister{
+					{
+						Name:  wrapper.consumer.GetName(),
+						Value: value,
+					},
+				},
 			}
 			encoded := encodeSetMessage(message)
 			group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
@@ -307,9 +317,11 @@ func (group *RegisterGroup) handleUpdateMessage(msg *UpdateMessage) {
 		return
 	}
 
-	consumers := group.consumers[msg.RegisterName]
-	for _, wrapper := range consumers {
-		group.updateConsumerValue(wrapper, msg.Value)
+	for _, register := range msg.Registers {
+		consumers := group.consumers[register.Name]
+		for _, wrapper := range consumers {
+			group.updateConsumerValue(wrapper, register.Value)
+		}
 	}
 }
 
@@ -319,10 +331,12 @@ func (group *RegisterGroup) handleSetMessage(msg *SetMessage) {
 		return
 	}
 
-	provider := group.providers[msg.RegisterName]
-	if provider != nil {
-		_, setter := provider.GetChannels()
-		setter <- msg.Value
+	for _, register := range msg.Registers {
+		provider := group.providers[register.Name]
+		if provider != nil {
+			_, setter := provider.GetChannels()
+			setter <- register.Value
+		}
 	}
 }
 
@@ -353,6 +367,10 @@ func (group *RegisterGroup) advertiseLoop() {
 				GroupName:      group.name,
 				Port:           uint16(port),
 				Registers: []AdvertisedRegister{
+					{
+						Name:  "test",
+						Value: NewInvalid[[]byte](),
+					},
 					{
 						Name:     p.GetName(),
 						Value:    value,

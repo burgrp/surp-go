@@ -74,10 +74,10 @@ function surp_proto.dissector(tvb, pinfo, tree)
         subtree:add(f_port, tvb(offset,2))
         offset = offset + 2
 
-        if tvb:len() < offset + 2 then return end
-        local reg_count = tvb(offset,2):uint()
-        subtree:add(f_reg_count, tvb(offset,2))
-        offset = offset + 2
+        if tvb:len() < offset + 1 then return end
+        local reg_count = tvb(offset,1):uint()
+        subtree:add(f_reg_count, tvb(offset,1))
+        offset = offset + 1
 
         -- Process each register
         for i = 1, reg_count do
@@ -103,7 +103,9 @@ function surp_proto.dissector(tvb, pinfo, tree)
             offset = offset + 2
 
             local val_str = ""
-            if val_len >= 0 then
+            if val_len == -1 then
+                val_str = "(invalid)"
+            elseif val_len >= 0 then
                 if tvb:len() < offset + val_len then return end
                 local val_hex = ""
                 for i = 0, val_len - 1 do
@@ -113,7 +115,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
                 reg_tree:add(f_val, tvb(offset, val_len))
                 offset = offset + val_len
             end
-            reg_info = reg_info .. val_str .. " "
+            reg_info = reg_info .. val_str
 
             if tvb:len() < offset + 1 then return end
             local meta_count = tvb(offset,1):uint()
@@ -140,7 +142,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
                 local meta_val = tvb(offset, val_key_len):string()
                 offset = offset + val_key_len
 
-                meta_str = meta_str .. meta_key .. ":" .. meta_val .. " "
+                meta_str = meta_str .. " "..meta_key .. ":" .. meta_val
 
                 local meta_tree = reg_tree:add(surp_proto, tvb(meta_key_offset), "Metadata " .. meta_key..":"..meta_val)
                 meta_tree:add(f_meta_key_len, tvb(meta_key_offset,1))
@@ -174,35 +176,50 @@ function surp_proto.dissector(tvb, pinfo, tree)
 
         info_str = group_name .. (msg_type == 0x02 and " update " or " set ")
 
-        if tvb:len() < offset + 2 then return end
-        local reg_name_len = tvb(offset,2):uint()
-        subtree:add(f_reg_name2_len, tvb(offset,2))
-        offset = offset + 2
+        if tvb:len() < offset + 1 then return end
+        local reg_count = tvb(offset,1):uint()
+        subtree:add(f_reg_count, tvb(offset,1))
+        offset = offset + 1
 
-        if tvb:len() < offset + reg_name_len then return end
-        local reg_name = tvb(offset,reg_name_len):string()
-        subtree:add(f_reg_name2, tvb(offset, reg_name_len))
-        offset = offset + reg_name_len
+        for i = 1, reg_count do
 
-        info_str = info_str .. reg_name .. "="
+            if tvb:len() < offset + 1 then return end
+            local reg_name_len = tvb(offset,1):uint()
+            local reg_offset = offset
+            offset = offset + 1
 
-        if tvb:len() < offset + 2 then return end
-        local val_len = tvb(offset,2):int()
-        subtree:add(f_val_len, tvb(offset,2))
-        offset = offset + 2
+            if tvb:len() < offset + reg_name_len then return end
+            local reg_name = tvb(offset,reg_name_len):string()
+            offset = offset + reg_name_len
 
-        local val_str = ""
-        if val_len >= 0 then
-            if tvb:len() < offset + val_len then return end
-            local val_hex = ""
-            for i = 0, val_len - 1 do
-                val_hex = val_hex .. string.format("%02X", tvb(offset + i, 1):uint())
+            local reg_tree = subtree:add(surp_proto, tvb(reg_offset), "Register "..reg_name)
+            reg_tree:add(f_reg_name_len, tvb(reg_offset,1))
+            reg_tree:add(f_reg_name, tvb(reg_offset + 1,reg_name_len))
+
+            if tvb:len() < offset + 2 then return end
+            local val_len = tvb(offset,2):int()
+            reg_tree:add(f_val_len, tvb(offset,2))
+            offset = offset + 2
+
+            local val_str = ""
+            if val_len == -1 then
+                val_str = "(invalid)"
+            elseif val_len >= 0 then
+                if tvb:len() < offset + val_len then return end
+                local val_hex = ""
+                for i = 0, val_len - 1 do
+                    val_hex = val_hex .. string.format("%02X", tvb(offset + i, 1):uint())
+                end
+                val_str = val_hex
+                reg_tree:add(f_val, tvb(offset, val_len))
+                offset = offset + val_len
             end
-            val_str = val_hex
-            subtree:add(f_val, tvb(offset, val_len))
-            offset = offset + val_len
+
+            if i > 1 then
+                info_str = info_str .. ", "
+            end
+            info_str = info_str .. reg_name .. "=" .. val_str
         end
-        info_str = info_str .. val_str .. " "
 
     else
         subtree:add_expert_info(PI_MALFORMED, PI_ERROR, "Unknown SURP message type")

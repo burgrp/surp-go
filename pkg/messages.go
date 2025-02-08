@@ -20,11 +20,15 @@ type AdvertiseMessage struct {
 	Registers      []AdvertisedRegister
 }
 
+type UpdatedRegister struct {
+	Name  string
+	Value Optional[[]byte]
+}
+
 type UpdateMessage struct {
 	SequenceNumber uint16
 	GroupName      string
-	RegisterName   string
-	Value          Optional[[]byte]
+	Registers      []UpdatedRegister
 }
 
 type SetMessage UpdateMessage
@@ -39,7 +43,7 @@ func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	buf.WriteString(msg.GroupName)
 	binary.Write(&buf, binary.BigEndian, msg.Port)
 
-	binary.Write(&buf, binary.BigEndian, uint16(len(msg.Registers)))
+	buf.WriteByte(byte(len(msg.Registers)))
 	for _, r := range msg.Registers {
 		buf.WriteByte(byte(len(r.Name)))
 		buf.WriteString(r.Name)
@@ -70,85 +74,96 @@ func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
 	buf.Write(data)
 }
 
+func readByte(data []byte) (byte, []byte, bool) {
+	if len(data) < 1 {
+		return 0, nil, false
+	}
+	return data[0], data[1:], true
+}
+
+func readUint16(data []byte) (uint16, []byte, bool) {
+	if len(data) < 2 {
+		return 0, nil, false
+	}
+	return binary.BigEndian.Uint16(data[:2]), data[2:], true
+}
+
+func readString(data []byte) (string, []byte, bool) {
+	if len(data) < 1 {
+		return "", nil, false
+	}
+	length := int(data[0])
+	if len(data) < length+1 {
+		return "", nil, false
+	}
+	return string(data[1 : length+1]), data[length+1:], true
+}
+
 func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 
 	remaining := data[:]
 
 	msg := &AdvertiseMessage{}
 
-	if len(remaining) < 2 {
+	sequenceNumber, remaining, ok := readUint16(remaining)
+	if !ok {
 		return nil, false
 	}
-	msg.SequenceNumber = binary.BigEndian.Uint16(remaining[:2])
-	remaining = remaining[2:]
+	msg.SequenceNumber = sequenceNumber
 
-	if len(remaining) < 1 {
+	groupName, remaining, ok := readString(remaining)
+	if !ok {
 		return nil, false
 	}
-	groupNameLen := int(remaining[0])
-	remaining = remaining[1:]
-	if len(remaining) < groupNameLen {
-		return nil, false
-	}
-	msg.GroupName = string(remaining[:groupNameLen])
-	remaining = remaining[groupNameLen:]
+	msg.GroupName = groupName
 
-	if len(remaining) < 2 {
+	port, remaining, ok := readUint16(remaining)
+	if !ok {
 		return nil, false
 	}
-	msg.Port = binary.BigEndian.Uint16(remaining[:2])
-	remaining = remaining[2:]
+	msg.Port = port
 
-	registerCount := binary.BigEndian.Uint16(remaining[:2])
-	remaining = remaining[2:]
+	registerCount, remaining, ok := readByte(remaining)
+	if !ok {
+		return nil, false
+	}
+
+	msg.Registers = make([]AdvertisedRegister, 0, registerCount)
 
 	for i := 0; i < int(registerCount); i++ {
-		if len(remaining) < 1 {
+
+		registerName, remaining, ok := readString(remaining)
+		if !ok {
 			return nil, false
 		}
-		registerNameLen := int(remaining[0])
-		remaining = remaining[1:]
-		if len(remaining) < registerNameLen {
-			return nil, false
-		}
-		registerName := string(remaining[:registerNameLen])
-		remaining = remaining[registerNameLen:]
 
 		value, remaining, ok := readValue(remaining)
 		if !ok {
 			return nil, false
 		}
 
-		if len(remaining) < 2 {
+		metadataCount, remaining, ok := readByte(remaining)
+		if !ok {
 			return nil, false
 		}
-		metadataCount := remaining[0]
-		remaining = remaining[1:]
+
 		metadata := make(map[string]string, metadataCount)
 
 		for j := 0; j < int(metadataCount); j++ {
-			if len(remaining) < 1 {
-				return nil, false
-			}
-			keyLen := int(remaining[0])
-			remaining = remaining[1:]
-			if len(remaining) < keyLen {
-				return nil, false
-			}
-			k := string(remaining[:keyLen])
-			remaining = remaining[keyLen:]
 
-			if len(remaining) < 1 {
+			var key string
+			key, remaining, ok = readString(remaining)
+			if !ok {
 				return nil, false
 			}
-			valLen := int(remaining[0])
-			remaining = remaining[1:]
-			if len(remaining) < valLen {
+
+			var val string
+			val, remaining, ok = readString(remaining)
+			if !ok {
 				return nil, false
 			}
-			v := string(remaining[:valLen])
-			remaining = remaining[valLen:]
-			metadata[k] = v
+
+			metadata[key] = val
 		}
 
 		msg.Registers = append(msg.Registers, AdvertisedRegister{
@@ -187,9 +202,12 @@ func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
 	buf.WriteByte(byte(len(msg.GroupName)))
 	buf.WriteString(msg.GroupName)
-	binary.Write(&buf, binary.BigEndian, uint16(len(msg.RegisterName)))
-	buf.WriteString(msg.RegisterName)
-	writeValue(msg.Value, &buf)
+	buf.WriteByte(byte(len(msg.Registers)))
+	for _, register := range msg.Registers {
+		buf.WriteByte(byte(len(register.Name)))
+		buf.WriteString(register.Name)
+		writeValue(register.Value, &buf)
+	}
 
 	return buf.Bytes()
 }
@@ -200,39 +218,45 @@ func decodeValueMessage(messageType byte, data []byte) (*UpdateMessage, bool) {
 
 	msg := &UpdateMessage{}
 
-	if len(remaining) < 2 {
-		return nil, false
-	}
-	msg.SequenceNumber = binary.BigEndian.Uint16(remaining[:2])
-	remaining = remaining[2:]
-
-	if len(remaining) < 1 {
-		return nil, false
-	}
-	groupNameLen := int(remaining[0])
-	remaining = remaining[1:]
-	if len(remaining) < groupNameLen {
-		return nil, false
-	}
-	msg.GroupName = string(remaining[:groupNameLen])
-	remaining = remaining[groupNameLen:]
-
-	if len(remaining) < 2 {
-		return nil, false
-	}
-	registerNameLen := int(binary.BigEndian.Uint16(remaining[:2]))
-	remaining = remaining[2:]
-	if len(remaining) < registerNameLen {
-		return nil, false
-	}
-	msg.RegisterName = string(remaining[:registerNameLen])
-	remaining = remaining[registerNameLen:]
-
-	value, _, ok := readValue(remaining)
+	sequenceNumber, remaining, ok := readUint16(remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.Value = value
+	msg.SequenceNumber = sequenceNumber
+
+	groupName, remaining, ok := readString(remaining)
+	if !ok {
+		return nil, false
+	}
+	msg.GroupName = groupName
+
+	registerCount, remaining, ok := readByte(remaining)
+	if !ok {
+		return nil, false
+	}
+
+	msg.Registers = make([]UpdatedRegister, 0, registerCount)
+
+	for i := 0; i < int(registerCount); i++ {
+
+		var name string
+		name, remaining, ok = readString(remaining)
+		if !ok {
+			return nil, false
+		}
+
+		var value Optional[[]byte]
+		value, remaining, ok = readValue(remaining)
+		if !ok {
+			return nil, false
+		}
+
+		msg.Registers = append(msg.Registers, UpdatedRegister{
+			Name:  name,
+			Value: value,
+		})
+
+	}
 
 	return msg, true
 }
