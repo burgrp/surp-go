@@ -368,10 +368,6 @@ func (group *RegisterGroup) advertiseLoop() {
 				Port:           uint16(port),
 				Registers: []AdvertisedRegister{
 					{
-						Name:  "test",
-						Value: NewInvalid[[]byte](),
-					},
-					{
 						Name:     p.GetName(),
 						Value:    value,
 						Metadata: metadata,
