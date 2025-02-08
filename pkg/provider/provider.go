@@ -15,9 +15,12 @@ type Register[T any] struct {
 	metadata map[string]string
 	getterCh chan surp.Optional[[]byte]
 	setterCh chan surp.Optional[[]byte]
+	listener SetListener[T]
 }
 
-func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string) *Register[T] {
+type SetListener[T any] func(surp.Optional[T])
+
+func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string, listener SetListener[T]) *Register[T] {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
@@ -34,6 +37,7 @@ func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encode
 		rw:       rw,
 		getterCh: make(chan surp.Optional[[]byte]),
 		setterCh: make(chan surp.Optional[[]byte]),
+		listener: listener,
 	}
 
 	go reg.readSets()
@@ -43,15 +47,16 @@ func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encode
 
 func (reg *Register[T]) readSets() {
 	for encodedValue := range reg.setterCh {
-		if !reg.rw {
+		if !reg.rw && reg.listener != nil {
 			continue
 		}
-		if !encodedValue.IsValid() {
-			reg.getterCh <- surp.NewInvalid[[]byte]()
-			continue
+
+		decodedValue := surp.NewInvalid[T]()
+		if encodedValue.IsValid() {
+			decodedValue = surp.NewValid(reg.decoder(encodedValue.Get()))
 		}
-		reg.value = surp.NewValid(reg.decoder(encodedValue.Get()))
-		reg.getterCh <- reg.getEncodedValue()
+
+		reg.listener(decodedValue)
 	}
 }
 
@@ -83,10 +88,10 @@ func (reg *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp
 	return reg.getterCh, reg.setterCh
 }
 
-func NewStringRegister(name string, value surp.Optional[string], rw bool, metadata map[string]string) *Register[string] {
-	return NewRegister[string](name, value, surp.EncodeString, surp.DecodeString, "string", rw, metadata)
+func NewStringRegister(name string, value surp.Optional[string], rw bool, metadata map[string]string, listener SetListener[string]) *Register[string] {
+	return NewRegister[string](name, value, surp.EncodeString, surp.DecodeString, "string", rw, metadata, listener)
 }
 
-func NewIntRegister(name string, value surp.Optional[int], rw bool, metadata map[string]string) *Register[int] {
-	return NewRegister[int](name, value, surp.EncodeInt, surp.DecodeInt, "int", rw, metadata)
+func NewIntRegister(name string, value surp.Optional[int], rw bool, metadata map[string]string, listener SetListener[int]) *Register[int] {
+	return NewRegister[int](name, value, surp.EncodeInt, surp.DecodeInt, "int", rw, metadata, listener)
 }

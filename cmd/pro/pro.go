@@ -11,7 +11,11 @@ func main() {
 
 	//r1 := provider.NewStringRegister("r1", surp.NewValid("Nazdar!"), true, nil)
 
-	r2 := provider.NewIntRegister("r2", surp.NewValid(10), true, nil)
+	var r2 *provider.Register[int]
+	r2 = provider.NewIntRegister("r2", surp.NewValid(10), true, nil, func(v surp.Optional[int]) {
+		println("r2 set:", v.String())
+		r2.SetValue(v)
+	})
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")
 	if err != nil {
@@ -22,16 +26,14 @@ func main() {
 
 	regGroup.AddProviders(r2)
 
-	counter := 0
-
 	for {
-		var value surp.Optional[int]
-		if counter%5 != 0 {
-			value = surp.NewValid(counter)
+		counter := r2.GetValue()
+		if counter.IsValid() {
+			counter = surp.NewValid(counter.Get() + 1)
 		}
-		r2.SetValue(value)
+		r2.SetValue(counter)
 		time.Sleep(1 * time.Second)
-		counter++
+
 	}
 
 }

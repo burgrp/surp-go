@@ -7,7 +7,10 @@ socat - UDP6-SENDTO:[ff02::1fc6:1:1%wlp3s0]:5070
 
 - check all channels for blocking and capacity
 - implement sequence numbers and checks
-- SET listeners on provider
 - implement Filtered socket
 - unit tests
+- decoder/encoder panic handling
 - truncated packets???
+
+## Wireshark
+WIRESHARK_PLUGIN_DIR=$PWD/wireshark wireshark

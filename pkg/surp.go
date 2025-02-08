@@ -6,7 +6,7 @@ Protocol Overview:
 - Three fundamental operations:
  1. Discovery: Devices advertise their registers
  2. Synchronization: Efficient value updates through multicast
- 3. Control: Write operations to writable registers
+ 3. Control: Set operations to RW registers
 
 Key Components:
 1. Register Groups: Logical namespaces for register organization
@@ -17,23 +17,17 @@ Key Components:
 
 Protocol Characteristics:
 - Transport: UDP/IPv6 multicast (link-local scope ff02::/16)
-- Port Range: 5070-6070 (IANA reserved for experimental use)
 - MTU: Optimized for ≤512 byte payloads
 - Frequency: Periodic advertisements every 2-4 seconds
 
 Message Types:
 1. Advertise (0x01): Register metadata announcements
 2. Update (0x02): Broadcast value updates
-4. Write (0x03): Register modification attempts
+4. Set0x03): Register modification attempts
 
 Addressing Scheme:
-- Base multicast address: ff02::[group_crc16]:[type]:[register_crc16]
-  - group_crc16: CRC16-CCITT of register group name
-  - type: 1=Control, 2=Data
-
-- Predefined addresses:
-  - Advertise:    ff02::[group_crc16]:1:1:5070
-  - Update:       ff02::[group_crc16]:1:1:5071
+- IPv6 multicast address: ff02::cafe:face:1dea:1
+- Port: Calculated for each register group and message type in range 1024-49151
 
 Message Structure (Binary):
 Advertise Message:
@@ -59,6 +53,7 @@ Advertise Message:
 
 Update Message:
 
+	[4 bytes]  Magic number "SURP"
 	[1 byte]  Message type (0x02)
 	[2 bytes] Sequence number
 	[1 byte]  Group name length (G)
@@ -254,20 +249,28 @@ func (group *RegisterGroup) Close() error {
 
 func (group *RegisterGroup) readPipes() {
 	for m := range group.rcvChannel {
-		switch m.Message[0] {
+
+		if len(m.Message) < 5 || string(m.Message[:4]) != "SURP" {
+			continue
+		}
+
+		messageType := m.Message[4]
+		messageData := m.Message[5:]
+
+		switch messageType {
 		case messageTypeAdvertise:
-			advertiseMessage, ok := decodeAdvertiseMessage(m.Message)
+			advertiseMessage, ok := decodeAdvertiseMessage(messageData)
 			if ok {
 				group.handleAdvertiseMessage(advertiseMessage, m.Addr)
 			}
 		case messageTypeUpdate:
-			updateMessage, ok := decodeUpdateMessage(m.Message)
+			updateMessage, ok := decodeUpdateMessage(messageData)
 			if ok {
 				group.handleUpdateMessage(updateMessage)
 			}
 
 		case messageTypeSet:
-			setMessage, ok := decodeSetMessage(m.Message)
+			setMessage, ok := decodeSetMessage(messageData)
 			if ok {
 				group.handleSetMessage(setMessage)
 			}

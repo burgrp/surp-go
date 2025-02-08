@@ -11,7 +11,7 @@ import (
 
 func TestHelloName(t *testing.T) {
 
-	testReg := provider.NewStringRegister("test", surp.NewValid("Bazar!"), true, nil)
+	testReg := provider.NewStringRegister("test", surp.NewValid("Bazar!"), true, nil, nil)
 
 	providerGroup, err := surp.JoinGroup("wlp3s0", "test")
 	require.NoError(t, err)
@@ -21,6 +21,6 @@ func TestHelloName(t *testing.T) {
 
 	providerGroup.AddProviders(testReg)
 
-	time.Sleep(10000 * time.Second)
+	time.Sleep(1 * time.Second)
 
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 )
 
+const magicString = "SURP"
+
 type AdvertisedRegister struct {
 	Name     string
 	Value    Optional[[]byte]
@@ -30,6 +32,7 @@ type SetMessage UpdateMessage
 func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
 	var buf bytes.Buffer
 
+	buf.WriteString(magicString)
 	buf.WriteByte(messageTypeAdvertise)
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
 	buf.WriteByte(byte(len(msg.GroupName)))
@@ -70,14 +73,6 @@ func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
 func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 
 	remaining := data[:]
-
-	if len(remaining) < 1 {
-		return nil, false
-	}
-	if remaining[0] != messageTypeAdvertise {
-		return nil, false
-	}
-	remaining = remaining[1:]
 
 	msg := &AdvertiseMessage{}
 
@@ -187,6 +182,7 @@ func readValue(remaining []byte) (Optional[[]byte], []byte, bool) {
 func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
 	var buf bytes.Buffer
 
+	buf.WriteString(magicString)
 	buf.WriteByte(messageType)
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
 	buf.WriteByte(byte(len(msg.GroupName)))
@@ -201,14 +197,6 @@ func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
 func decodeValueMessage(messageType byte, data []byte) (*UpdateMessage, bool) {
 
 	remaining := data[:]
-
-	if len(remaining) < 1 {
-		return nil, false
-	}
-	if remaining[0] != messageType {
-		return nil, false
-	}
-	remaining = remaining[1:]
 
 	msg := &UpdateMessage{}
 
