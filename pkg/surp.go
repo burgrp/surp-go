@@ -180,8 +180,7 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 
 func (group *RegisterGroup) handleProvider(provider Provider) {
 	getterChannel, _ := provider.GetChannels()
-	for {
-		data := <-getterChannel
+	for data := range getterChannel {
 		msg := &UpdateMessage{
 			SequenceNumber: 0,
 			GroupName:      group.name,
@@ -194,6 +193,26 @@ func (group *RegisterGroup) handleProvider(provider Provider) {
 		}
 		encoded := encodeUpdateMessage(msg)
 		group.updatePipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: group.updatePipe.addr}
+	}
+}
+
+func (group *RegisterGroup) handleConsumer(wrapper *ConsumerWrapper) {
+	for value := range wrapper.getter {
+		port := wrapper.setPort
+		if port != 0 {
+			message := &SetMessage{
+				SequenceNumber: 0,
+				GroupName:      group.name,
+				Registers: []UpdatedRegister{
+					{
+						Name:  wrapper.consumer.GetName(),
+						Value: value,
+					},
+				},
+			}
+			encoded := encodeSetMessage(message)
+			group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
+		}
 	}
 }
 
@@ -211,7 +230,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			setter:   setter,
 		}
 
-		go group.handleConsumerWrapper(wrapper)
+		go group.handleConsumer(wrapper)
 
 		wrappers := group.consumers[consumer.GetName()]
 		if wrappers == nil {
@@ -220,26 +239,6 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			wrappers = append(wrappers, wrapper)
 		}
 		group.consumers[consumer.GetName()] = wrappers
-	}
-}
-
-func (group *RegisterGroup) handleConsumerWrapper(wrapper *ConsumerWrapper) {
-	for value := range wrapper.getter {
-		port := wrapper.setPort
-		if port != 0 {
-			message := &SetMessage{
-				SequenceNumber: 0,
-				GroupName:      group.name,
-				Registers: []UpdatedRegister{
-					{
-						Name:  wrapper.consumer.GetName(),
-						Value: value,
-					},
-				},
-			}
-			encoded := encodeSetMessage(message)
-			group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
-		}
 	}
 }
 

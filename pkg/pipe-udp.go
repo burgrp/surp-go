@@ -105,8 +105,7 @@ func (pipe *UdpPipe) read() {
 }
 
 func (pipe *UdpPipe) write() {
-	for {
-		m := <-pipe.sndChannel
+	for m := range pipe.sndChannel {
 		_, err := pipe.conn.WriteToUDP(m.Message, m.Addr)
 		if err != nil {
 			return
