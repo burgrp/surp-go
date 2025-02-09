@@ -51,9 +51,9 @@ func (reg *Register[T]) readSets() {
 			continue
 		}
 
-		decodedValue := surp.NewInvalid[T]()
-		if encodedValue.IsValid() {
-			decodedValue = surp.NewValid(reg.decoder(encodedValue.Get()))
+		decodedValue := surp.NewUndefined[T]()
+		if encodedValue.IsDefined() {
+			decodedValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
 		}
 
 		reg.listener(decodedValue)
@@ -69,10 +69,10 @@ func (reg *Register[T]) GetValue() surp.Optional[T] {
 }
 
 func (reg *Register[T]) getEncodedValue() surp.Optional[[]byte] {
-	if !reg.value.IsValid() {
-		return surp.NewInvalid[[]byte]()
+	if !reg.value.IsDefined() {
+		return surp.NewUndefined[[]byte]()
 	}
-	return surp.NewValid(reg.encoder(reg.value.Get()))
+	return surp.NewDefined(reg.encoder(reg.value.Get()))
 }
 
 func (reg *Register[T]) SetValue(value surp.Optional[T]) {

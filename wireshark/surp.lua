@@ -104,7 +104,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
 
             local val_str = ""
             if val_len == -1 then
-                val_str = "(invalid)"
+                val_str = "(undefined)"
             elseif val_len >= 0 then
                 if tvb:len() < offset + val_len then return end
                 local val_hex = ""
@@ -203,7 +203,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
 
             local val_str = ""
             if val_len == -1 then
-                val_str = "(invalid)"
+                val_str = "(undefined)"
             elseif val_len >= 0 then
                 if tvb:len() < offset + val_len then return end
                 local val_hex = ""

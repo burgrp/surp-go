@@ -43,14 +43,14 @@ func (p *Register[T]) GetValue() surp.Optional[T] {
 }
 
 func (p *Register[T]) SetValue(value surp.Optional[T]) {
-	if !value.IsValid() {
-		p.getterCh <- surp.NewInvalid[[]byte]()
+	if value.IsUndefined() {
+		p.getterCh <- surp.NewUndefined[[]byte]()
 	}
-	p.getterCh <- surp.NewValid(p.encoder(value.Get()))
+	p.getterCh <- surp.NewDefined(p.encoder(value.Get()))
 }
 
 func (p *Register[T]) SetMetadata(md map[string]string) {
-	p.metadata = surp.NewValid(md)
+	p.metadata = surp.NewDefined(md)
 }
 
 func (p *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp.Optional[[]byte]) {
@@ -60,8 +60,8 @@ func (p *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp.O
 func (p *Register[T]) readUpdates() {
 	for encodedValue := range p.setterCh {
 		var newValue surp.Optional[T]
-		if encodedValue.IsValid() {
-			newValue = surp.NewValid(p.decoder(encodedValue.Get()))
+		if encodedValue.IsDefined() {
+			newValue = surp.NewDefined(p.decoder(encodedValue.Get()))
 		}
 		if newValue != p.value {
 			p.value = newValue

@@ -346,7 +346,7 @@ func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value 
 		wrapper.timeout.Stop()
 	}
 	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
-		wrapper.setter <- NewInvalid[[]byte]()
+		wrapper.setter <- NewUndefined[[]byte]()
 	})
 
 	wrapper.setter <- value

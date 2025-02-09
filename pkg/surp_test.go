@@ -11,7 +11,7 @@ import (
 
 func TestHelloName(t *testing.T) {
 
-	testReg := provider.NewStringRegister("test", surp.NewValid("Bazar!"), true, nil, nil)
+	testReg := provider.NewStringRegister("test", surp.NewDefined("Bazar!"), true, nil, nil)
 
 	providerGroup, err := surp.JoinGroup("wlp3s0", "test")
 	require.NoError(t, err)

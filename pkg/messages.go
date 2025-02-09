@@ -64,7 +64,7 @@ func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
 	var length int
 	var data []byte
 
-	if value.IsValid() {
+	if value.IsDefined() {
 		data = value.Get()
 		length = len(data)
 	} else {
@@ -107,7 +107,7 @@ func readString(remaining *[]byte) (string, bool) {
 
 func readValue(remaining *[]byte) (Optional[[]byte], bool) {
 
-	value := NewInvalid[[]byte]()
+	value := NewUndefined[[]byte]()
 
 	valueLen, ok := readUint16(remaining)
 	if !ok {
@@ -121,7 +121,7 @@ func readValue(remaining *[]byte) (Optional[[]byte], bool) {
 	if len(*remaining) < int(valueLen) {
 		return value, false
 	}
-	value = NewValid((*remaining)[:valueLen])
+	value = NewDefined((*remaining)[:valueLen])
 	*remaining = (*remaining)[valueLen:]
 	return value, true
 }
