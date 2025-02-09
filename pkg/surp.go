@@ -95,14 +95,16 @@ const (
 
 type Provider interface {
 	GetName() string
-	GetChannels() (<-chan Optional[[]byte], chan<- Optional[[]byte])
 	GetMetadata() (map[string]string, Optional[[]byte])
+	SetValue(Optional[[]byte])
+	Attach(updateListener func(Optional[[]byte]))
 }
 
 type Consumer interface {
 	GetName() string
-	GetChannels() (<-chan Optional[[]byte], chan<- Optional[[]byte])
 	SetMetadata(map[string]string)
+	UpdateValue(Optional[[]byte])
+	Attach(setListener func(Optional[[]byte]))
 }
 
 type Encoder[T any] func(T) []byte
@@ -111,8 +113,6 @@ type Decoder[T any] func([]byte) T
 type ConsumerWrapper struct {
 	consumer Consumer
 	timeout  *time.Timer
-	getter   <-chan Optional[[]byte]
-	setter   chan<- Optional[[]byte]
 	setIP    net.IP
 	setPort  uint16
 }
@@ -174,45 +174,20 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 	defer group.providersMutex.Unlock()
 	for _, provider := range providers {
 		group.providers[provider.GetName()] = provider
-		go group.handleProvider(provider)
-	}
-}
-
-func (group *RegisterGroup) handleProvider(provider Provider) {
-	getterChannel, _ := provider.GetChannels()
-	for data := range getterChannel {
-		msg := &UpdateMessage{
-			SequenceNumber: 0,
-			GroupName:      group.name,
-			Registers: []UpdatedRegister{
-				{
-					Name:  provider.GetName(),
-					Value: data,
-				},
-			},
-		}
-		encoded := encodeUpdateMessage(msg)
-		group.updatePipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: group.updatePipe.addr}
-	}
-}
-
-func (group *RegisterGroup) handleConsumer(wrapper *ConsumerWrapper) {
-	for value := range wrapper.getter {
-		port := wrapper.setPort
-		if port != 0 {
-			message := &SetMessage{
+		provider.Attach(func(value Optional[[]byte]) {
+			msg := &UpdateMessage{
 				SequenceNumber: 0,
 				GroupName:      group.name,
 				Registers: []UpdatedRegister{
 					{
-						Name:  wrapper.consumer.GetName(),
+						Name:  provider.GetName(),
 						Value: value,
 					},
 				},
 			}
-			encoded := encodeSetMessage(message)
-			group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
-		}
+			encoded := encodeUpdateMessage(msg)
+			group.updatePipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: group.updatePipe.addr}
+		})
 	}
 }
 
@@ -222,15 +197,9 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 
 	for _, consumer := range consumers {
 
-		getter, setter := consumer.GetChannels()
-
 		wrapper := &ConsumerWrapper{
 			consumer: consumer,
-			getter:   getter,
-			setter:   setter,
 		}
-
-		go group.handleConsumer(wrapper)
 
 		wrappers := group.consumers[consumer.GetName()]
 		if wrappers == nil {
@@ -239,6 +208,24 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			wrappers = append(wrappers, wrapper)
 		}
 		group.consumers[consumer.GetName()] = wrappers
+
+		consumer.Attach(func(value Optional[[]byte]) {
+			port := wrapper.setPort
+			if port != 0 {
+				message := &SetMessage{
+					SequenceNumber: 0,
+					GroupName:      group.name,
+					Registers: []UpdatedRegister{
+						{
+							Name:  wrapper.consumer.GetName(),
+							Value: value,
+						},
+					},
+				}
+				encoded := encodeSetMessage(message)
+				group.setPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
+			}
+		})
 	}
 }
 
@@ -333,8 +320,7 @@ func (group *RegisterGroup) handleSetMessage(msg *SetMessage) {
 	for _, register := range msg.Registers {
 		provider := group.providers[register.Name]
 		if provider != nil {
-			_, setter := provider.GetChannels()
-			setter <- register.Value
+			provider.SetValue(register.Value)
 		}
 	}
 }
@@ -345,10 +331,10 @@ func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value 
 		wrapper.timeout.Stop()
 	}
 	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
-		wrapper.setter <- NewUndefined[[]byte]()
+		wrapper.consumer.UpdateValue(NewUndefined[[]byte]())
 	})
 
-	wrapper.setter <- value
+	wrapper.consumer.UpdateValue(value)
 }
 
 func (group *RegisterGroup) advertiseLoop() {

@@ -7,20 +7,19 @@ import (
 )
 
 type Register[T any] struct {
-	name     string
-	value    surp.Optional[T]
-	encoder  surp.Encoder[T]
-	decoder  surp.Decoder[T]
-	rw       bool
-	metadata map[string]string
-	getterCh chan surp.Optional[[]byte]
-	setterCh chan surp.Optional[[]byte]
-	listener SetListener[T]
+	name           string
+	value          surp.Optional[T]
+	encoder        surp.Encoder[T]
+	decoder        surp.Decoder[T]
+	rw             bool
+	metadata       map[string]string
+	setListener    SetListener[T]
+	updateListener func(surp.Optional[[]byte])
 }
 
 type SetListener[T any] func(surp.Optional[T])
 
-func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string, listener SetListener[T]) *Register[T] {
+func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string, setListener SetListener[T]) *Register[T] {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
@@ -29,35 +28,16 @@ func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encode
 	metadata["rw"] = fmt.Sprintf("%t", rw)
 
 	reg := &Register[T]{
-		name:     name,
-		value:    value,
-		encoder:  encoder,
-		decoder:  decoder,
-		metadata: metadata,
-		rw:       rw,
-		getterCh: make(chan surp.Optional[[]byte]),
-		setterCh: make(chan surp.Optional[[]byte]),
-		listener: listener,
+		name:        name,
+		value:       value,
+		encoder:     encoder,
+		decoder:     decoder,
+		metadata:    metadata,
+		rw:          rw,
+		setListener: setListener,
 	}
-
-	go reg.readSets()
 
 	return reg
-}
-
-func (reg *Register[T]) readSets() {
-	for encodedValue := range reg.setterCh {
-		if !reg.rw && reg.listener != nil {
-			continue
-		}
-
-		decodedValue := surp.NewUndefined[T]()
-		if encodedValue.IsDefined() {
-			decodedValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
-		}
-
-		reg.listener(decodedValue)
-	}
 }
 
 func (reg *Register[T]) GetName() string {
@@ -75,23 +55,46 @@ func (reg *Register[T]) getEncodedValue() surp.Optional[[]byte] {
 	return surp.NewDefined(reg.encoder(reg.value.Get()))
 }
 
-func (reg *Register[T]) SetValue(value surp.Optional[T]) {
+func (reg *Register[T]) Attach(updateListener func(surp.Optional[[]byte])) {
+	reg.updateListener = updateListener
+}
+
+func (reg *Register[T]) SetValue(encodedValue surp.Optional[[]byte]) {
+	if !reg.rw && reg.setListener != nil {
+		return
+	}
+
+	decodedValue := surp.NewUndefined[T]()
+	if encodedValue.IsDefined() {
+		decodedValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
+	}
+
+	reg.setListener(decodedValue)
+}
+
+func (reg *Register[T]) UpdateValue(value surp.Optional[T]) {
 	reg.value = value
-	reg.getterCh <- reg.getEncodedValue()
+	if reg.updateListener != nil {
+		reg.updateListener(reg.getEncodedValue())
+	}
 }
 
 func (reg *Register[T]) GetMetadata() (map[string]string, surp.Optional[[]byte]) {
 	return reg.metadata, reg.getEncodedValue()
 }
 
-func (reg *Register[T]) GetChannels() (<-chan surp.Optional[[]byte], chan<- surp.Optional[[]byte]) {
-	return reg.getterCh, reg.setterCh
-}
-
 func NewStringRegister(name string, value surp.Optional[string], rw bool, metadata map[string]string, listener SetListener[string]) *Register[string] {
 	return NewRegister[string](name, value, surp.EncodeString, surp.DecodeString, "string", rw, metadata, listener)
 }
 
-func NewIntRegister(name string, value surp.Optional[int], rw bool, metadata map[string]string, listener SetListener[int]) *Register[int] {
-	return NewRegister[int](name, value, surp.EncodeInt, surp.DecodeInt, "int", rw, metadata, listener)
+func NewIntRegister(name string, value surp.Optional[int64], rw bool, metadata map[string]string, listener SetListener[int64]) *Register[int64] {
+	return NewRegister[int64](name, value, surp.EncodeInt, surp.DecodeInt, "int", rw, metadata, listener)
+}
+
+func NewBoolRegister(name string, value surp.Optional[bool], rw bool, metadata map[string]string, listener SetListener[bool]) *Register[bool] {
+	return NewRegister[bool](name, value, surp.EncodeBool, surp.DecodeBool, "bool", rw, metadata, listener)
+}
+
+func NewFloatRegister(name string, value surp.Optional[float64], rw bool, metadata map[string]string, listener SetListener[float64]) *Register[float64] {
+	return NewRegister[float64](name, value, surp.EncodeFloat, surp.DecodeFloat, "float", rw, metadata, listener)
 }

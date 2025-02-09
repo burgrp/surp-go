@@ -14,8 +14,8 @@ func main() {
 	// 	println(r1.Name, ":", v)
 	// })
 
-	var r2 *consumer.Register[int]
-	r2 = consumer.NewIntRegister("r2", func(value surp.Optional[int]) {
+	var r2 *consumer.Register[int64]
+	r2 = consumer.NewIntRegister("r2", func(value surp.Optional[int64]) {
 		println(r2.GetName(), ":", value.String())
 	})
 
@@ -29,7 +29,7 @@ func main() {
 	regGroup.AddConsumers(r2)
 
 	for {
-		r2.SetValue(surp.NewDefined(0))
+		r2.SetValue(surp.NewDefined(int64(0)))
 		time.Sleep(7 * time.Second)
 	}
 }

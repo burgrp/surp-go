@@ -9,10 +9,10 @@ import (
 
 func main() {
 
-	var r2 *provider.Register[int]
-	r2 = provider.NewIntRegister("r2", surp.NewDefined(10), true, nil, func(v surp.Optional[int]) {
+	var r2 *provider.Register[int64]
+	r2 = provider.NewIntRegister("r2", surp.NewDefined(int64(10)), true, nil, func(v surp.Optional[int64]) {
 		println("r2 set:", v.String())
-		r2.SetValue(v)
+		r2.UpdateValue(v)
 	})
 
 	regGroup, err := surp.JoinGroup("wlp3s0", "test")
@@ -29,9 +29,8 @@ func main() {
 		if counter.IsDefined() {
 			counter = surp.NewDefined(counter.Get() + 1)
 		}
-		r2.SetValue(counter)
+		r2.UpdateValue(counter)
 		time.Sleep(1 * time.Second)
-
 	}
 
 }
