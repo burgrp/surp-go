@@ -129,6 +129,9 @@ type RegisterGroup struct {
 
 	consumers      map[string][]*ConsumerWrapper
 	consumersMutex sync.Mutex
+
+	sequenceNumber      uint16
+	sequenceNumberMutex sync.Mutex
 }
 
 func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
@@ -176,7 +179,7 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 		group.providers[provider.GetName()] = provider
 		provider.Attach(func(value Optional[[]byte]) {
 			msg := &UpdateMessage{
-				SequenceNumber: 0,
+				SequenceNumber: group.nextSequenceNumber(),
 				GroupName:      group.name,
 				Registers: []UpdatedRegister{
 					{
@@ -213,7 +216,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			port := wrapper.setPort
 			if port != 0 {
 				message := &SetMessage{
-					SequenceNumber: 0,
+					SequenceNumber: group.nextSequenceNumber(),
 					GroupName:      group.name,
 					Registers: []UpdatedRegister{
 						{
@@ -337,9 +340,15 @@ func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value 
 	wrapper.consumer.UpdateValue(value)
 }
 
+func (group *RegisterGroup) nextSequenceNumber() uint16 {
+	group.sequenceNumberMutex.Lock()
+	defer group.sequenceNumberMutex.Unlock()
+	group.sequenceNumber++
+	return group.sequenceNumber
+}
+
 func (group *RegisterGroup) advertiseLoop() {
 	port := group.setPipe.conn.LocalAddr().(*net.UDPAddr).Port
-	seq := uint16(0)
 	for {
 
 		//TODO send multiple registers in one message, split if necessary to fit into MTU
@@ -348,7 +357,7 @@ func (group *RegisterGroup) advertiseLoop() {
 			metadata, value := p.GetMetadata()
 
 			msg := &AdvertiseMessage{
-				SequenceNumber: seq,
+				SequenceNumber: group.nextSequenceNumber(),
 				GroupName:      group.name,
 				Port:           uint16(port),
 				Registers: []AdvertisedRegister{
@@ -362,8 +371,6 @@ func (group *RegisterGroup) advertiseLoop() {
 
 			data := encodeAdvertiseMessage(msg)
 			group.advertisePipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.advertisePipe.addr}
-
-			seq++
 		}
 
 		sleep := minAdvertisePeriod + time.Duration(rand.Intn(int(maxAdvertisePeriod-minAdvertisePeriod)))
