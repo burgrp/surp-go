@@ -20,6 +20,9 @@ func EncodeInt(v int64) []byte {
 }
 
 func DecodeInt(b []byte) int64 {
+	if len(b) != 8 {
+		return 0
+	}
 	result := binary.BigEndian.Uint64(b)
 	return int64(result)
 }
@@ -32,7 +35,7 @@ func EncodeBool(v bool) []byte {
 }
 
 func DecodeBool(b []byte) bool {
-	return b[0] != 0
+	return len(b) == 1 && b[0] != 0
 }
 
 func EncodeFloat(v float64) []byte {
@@ -42,6 +45,9 @@ func EncodeFloat(v float64) []byte {
 }
 
 func DecodeFloat(b []byte) float64 {
+	if len(b) != 8 {
+		return 0
+	}
 	bits := binary.BigEndian.Uint64(b)
 	return math.Float64frombits(bits)
 }
