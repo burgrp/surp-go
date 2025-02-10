@@ -17,6 +17,21 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/cons/cons.go",
+        },
+        {
+            "name": "CLI",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/surp/main.go",
+            "args": [
+                "get",
+                "r2"
+            ],
+            "env": {
+                "SURP_IF": "wlp3s0",
+                "SURP_GROUP": "test"
+            }
         }
     ]
 }

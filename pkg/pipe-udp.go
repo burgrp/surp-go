@@ -2,7 +2,6 @@ package surp
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"syscall"
 )
@@ -29,8 +28,6 @@ func NewMulticastPipe(netInterface *net.Interface, pipeName string, rcvChannel c
 	port := 1024 + int(CalculateHash(pipeName)&0xBBFF) // this gives us a port in the range 1024-49151
 
 	addrStr := fmt.Sprintf("[%s]:%d", ipv6Address, port)
-
-	log.Printf("Creating %s UDP pipe on %s", pipeName, addrStr)
 
 	addr, err := net.ResolveUDPAddr("udp6", addrStr)
 	if err != nil {

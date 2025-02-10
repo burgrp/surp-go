@@ -9,6 +9,8 @@ import (
 
 func main() {
 
+	r1 := provider.NewStringRegister("r1", surp.NewDefined("nazdar!"), false, nil, nil)
+
 	var r2 *provider.Register[int64]
 	r2 = provider.NewIntRegister("r2", surp.NewDefined(int64(10)), true, nil, func(v surp.Optional[int64]) {
 		println("r2 set:", v.String())
@@ -22,7 +24,7 @@ func main() {
 
 	defer regGroup.Close()
 
-	regGroup.AddProviders(r2)
+	regGroup.AddProviders(r1, r2)
 
 	for {
 		counter := r2.GetValue()
