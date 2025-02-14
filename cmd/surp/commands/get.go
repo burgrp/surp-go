@@ -13,7 +13,8 @@ func GetGetCommand() *cobra.Command {
 		Use:   "get <register>",
 		Short: "Read a register",
 		Long: `Reads the specified register.
-	With --stay flag, the command will remain connected and write any changes to stdout.`,
+	With --stay flag, the command will remain connected and write any changes to stdout.
+	Without --type flag, the type of the register is determined from metadata which is slower.`,
 		RunE: runGet,
 	}
 

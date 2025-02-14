@@ -37,7 +37,10 @@ func (reg *Register[T]) UpdateValue(encodedValue surp.Optional[[]byte]) {
 
 	var newValue surp.Optional[T]
 	if encodedValue.IsDefined() {
-		newValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
+		ev, ok := reg.decoder(encodedValue.Get())
+		if ok {
+			newValue = surp.NewDefined(ev)
+		}
 	}
 	if newValue != reg.value {
 		reg.value = newValue
@@ -118,7 +121,7 @@ func NewAnyRegister(name string, typ string, listeners ...UpdateListener[any]) *
 		return nil
 	}
 
-	decodeJson := func(b []byte) any {
+	decodeJson := func(b []byte) (any, bool) {
 		checkMetaType()
 
 		switch typ {
@@ -135,7 +138,7 @@ func NewAnyRegister(name string, typ string, listeners ...UpdateListener[any]) *
 			return surp.DecodeFloat(b)
 
 		}
-		return nil
+		return nil, false
 	}
 
 	reg = NewRegister[any](name, encodeJson, decodeJson, listeners...)

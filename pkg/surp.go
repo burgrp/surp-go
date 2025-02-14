@@ -108,7 +108,7 @@ type Consumer interface {
 }
 
 type Encoder[T any] func(T) []byte
-type Decoder[T any] func([]byte) T
+type Decoder[T any] func([]byte) (T, bool)
 
 type ConsumerWrapper struct {
 	consumer Consumer

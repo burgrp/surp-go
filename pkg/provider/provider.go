@@ -66,7 +66,10 @@ func (reg *Register[T]) SetValue(encodedValue surp.Optional[[]byte]) {
 
 	decodedValue := surp.NewUndefined[T]()
 	if encodedValue.IsDefined() {
-		decodedValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
+		ev, ok := reg.decoder(encodedValue.Get())
+		if ok {
+			decodedValue = surp.NewDefined(ev)
+		}
 	}
 
 	reg.setListener(decodedValue)
