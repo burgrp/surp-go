@@ -26,7 +26,9 @@
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
                 "get",
-                "r2"
+                "r2",
+                "-t",
+                "int"
             ],
             "env": {
                 "SURP_IF": "wlp3s0",

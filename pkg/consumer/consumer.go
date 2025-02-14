@@ -35,10 +35,6 @@ func (reg *Register[T]) GetMetadata() surp.Optional[map[string]string] {
 
 func (reg *Register[T]) UpdateValue(encodedValue surp.Optional[[]byte]) {
 
-	if reg.metadata.IsUndefined() {
-		return
-	}
-
 	var newValue surp.Optional[T]
 	if encodedValue.IsDefined() {
 		newValue = surp.NewDefined(reg.decoder(encodedValue.Get()))
@@ -88,46 +84,56 @@ func NewFloatRegister(name string, listeners ...UpdateListener[float64]) *Regist
 	return NewRegister[float64](name, surp.EncodeFloat, surp.DecodeFloat, listeners...)
 }
 
-func NewAnyRegister(name string, listeners ...UpdateListener[any]) *Register[any] {
+func NewAnyRegister(name string, typ string, listeners ...UpdateListener[any]) *Register[any] {
 
 	var reg *Register[any]
 
-	encodeJson := func(value any) []byte {
+	checkMetaType := func() {
 		omd := reg.GetMetadata()
 		if omd.IsDefined() {
-			md := omd.Get()
-			if md["type"] == "string" {
-				return surp.EncodeString(value.(string))
-			}
-			if md["type"] == "int" {
-				return surp.EncodeInt(value.(int64))
-			}
-			if md["type"] == "bool" {
-				return surp.EncodeBool(value.(bool))
-			}
-			if md["type"] == "float" {
-				return surp.EncodeFloat(value.(float64))
+			t := omd.Get()["type"]
+			if t != "" {
+				typ = t
 			}
 		}
+	}
+
+	encodeJson := func(value any) []byte {
+		checkMetaType()
+
+		switch typ {
+		case "string":
+			return surp.EncodeString(value.(string))
+
+		case "int":
+			return surp.EncodeInt(value.(int64))
+
+		case "bool":
+			return surp.EncodeBool(value.(bool))
+
+		case "float":
+			return surp.EncodeFloat(value.(float64))
+		}
+
 		return nil
 	}
 
 	decodeJson := func(b []byte) any {
-		omd := reg.GetMetadata()
-		if omd.IsDefined() {
-			md := omd.Get()
-			if md["type"] == "string" {
-				return surp.DecodeString(b)
-			}
-			if md["type"] == "int" {
-				return surp.DecodeInt(b)
-			}
-			if md["type"] == "bool" {
-				return surp.DecodeBool(b)
-			}
-			if md["type"] == "float" {
-				return surp.DecodeFloat(b)
-			}
+		checkMetaType()
+
+		switch typ {
+		case "string":
+			return surp.DecodeString(b)
+
+		case "int":
+			return surp.DecodeInt(b)
+
+		case "bool":
+			return surp.DecodeBool(b)
+
+		case "float":
+			return surp.DecodeFloat(b)
+
 		}
 		return nil
 	}
