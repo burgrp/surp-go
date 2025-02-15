@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"time"
 
 	surp "github.com/burgrp-go/surp/pkg"
 	"github.com/burgrp-go/surp/pkg/consumer"
@@ -49,10 +50,27 @@ func runGet(cmd *cobra.Command, args []string) error {
 		}),
 	)
 
-	for {
-		fmt.Println(<-values)
-		if !stay {
+	if stay {
+
+	Loop:
+		for {
+			select {
+			case value := <-values:
+				fmt.Println(value)
+			case <-cmd.Context().Done():
+				break Loop
+			}
+		}
+
+	} else {
+
+		select {
+		case value := <-values:
+			fmt.Println(value)
+		case <-cmd.Context().Done():
 			break
+		case <-time.After(surp.UpdateTimeout):
+			return fmt.Errorf("timeout")
 		}
 	}
 

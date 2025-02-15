@@ -28,11 +28,11 @@ func encodeMessage(msg *Message) []byte {
 	buf.WriteByte(byte(len(msg.Name)))
 	buf.WriteString(msg.Name)
 
-	if msg.Type == messageTypeUpdate || msg.Type == messageTypeSet {
+	if msg.Type == MessageTypeUpdate || msg.Type == MessageTypeSet {
 
 		writeValue(msg.Value, &buf)
 
-		if msg.Type == messageTypeUpdate {
+		if msg.Type == MessageTypeUpdate {
 
 			buf.WriteByte(byte(len(msg.Metadata)))
 			for k, v := range msg.Metadata {
@@ -125,7 +125,7 @@ func decodeMessage(data []byte) (*Message, bool) {
 	}
 	msg.Type = messageType
 
-	if messageType != messageTypeGet && messageType != messageTypeSet && messageType != messageTypeUpdate {
+	if messageType != MessageTypeGet && messageType != MessageTypeSet && messageType != MessageTypeUpdate {
 		return nil, false
 	}
 
@@ -147,7 +147,7 @@ func decodeMessage(data []byte) (*Message, bool) {
 	}
 	msg.Name = name
 
-	if msg.Type == messageTypeUpdate || msg.Type == messageTypeSet {
+	if msg.Type == MessageTypeUpdate || msg.Type == MessageTypeSet {
 
 		value, ok := readValue(&remaining)
 		if !ok {
@@ -155,7 +155,7 @@ func decodeMessage(data []byte) (*Message, bool) {
 		}
 		msg.Value = value
 
-		if msg.Type == messageTypeUpdate {
+		if msg.Type == MessageTypeUpdate {
 
 			metadataCount, ok := readByte(&remaining)
 			if !ok {

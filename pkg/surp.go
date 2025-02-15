@@ -72,12 +72,12 @@ import (
 )
 
 const (
-	messageTypeUpdate = 0x01
-	messageTypeSet    = 0x02
-	messageTypeGet    = 0x03
-	updateTimeout     = 10 * time.Second
-	minUpdatePeriod   = 2 * time.Second
-	maxUpdatePeriod   = 4 * time.Second
+	MessageTypeUpdate = 0x01
+	MessageTypeSet    = 0x02
+	MessageTypeGet    = 0x03
+	UpdateTimeout     = 10 * time.Second
+	MinUpdatePeriod   = 2 * time.Second
+	MaxUpdatePeriod   = 4 * time.Second
 )
 
 type Provider interface {
@@ -97,14 +97,14 @@ type Consumer interface {
 type Encoder[T any] func(T) []byte
 type Decoder[T any] func([]byte) (T, bool)
 
-type ConsumerWrapper struct {
+type consumerWrapper struct {
 	consumer Consumer
 	timeout  *time.Timer
 	setIP    net.IP
 	setPort  uint16
 }
 
-type ProviderWrapper struct {
+type providerWrapper struct {
 	provider      Provider
 	updateChannel chan struct{}
 }
@@ -115,10 +115,10 @@ type RegisterGroup struct {
 	unicastPipe   *UdpPipe
 	rcvChannel    chan MessageAndAddr
 
-	providers      map[string]*ProviderWrapper
+	providers      map[string]*providerWrapper
 	providersMutex sync.Mutex
 
-	consumers      map[string][]*ConsumerWrapper
+	consumers      map[string][]*consumerWrapper
 	consumersMutex sync.Mutex
 
 	sequenceNumber      uint16
@@ -135,8 +135,8 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 	group := &RegisterGroup{
 		name:       groupName,
 		rcvChannel: make(chan MessageAndAddr),
-		providers:  make(map[string]*ProviderWrapper),
-		consumers:  make(map[string][]*ConsumerWrapper),
+		providers:  make(map[string]*providerWrapper),
+		consumers:  make(map[string][]*consumerWrapper),
 	}
 
 	pipe, err := NewMulticastPipe(in, groupName, group.rcvChannel)
@@ -160,7 +160,7 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 
 	for _, provider := range providers {
 
-		providerWrapper := &ProviderWrapper{
+		providerWrapper := &providerWrapper{
 			provider:      provider,
 			updateChannel: make(chan struct{}),
 		}
@@ -183,13 +183,13 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 
 	for _, consumer := range consumers {
 
-		wrapper := &ConsumerWrapper{
+		wrapper := &consumerWrapper{
 			consumer: consumer,
 		}
 
 		wrappers := group.consumers[consumer.GetName()]
 		if wrappers == nil {
-			wrappers = []*ConsumerWrapper{wrapper}
+			wrappers = []*consumerWrapper{wrapper}
 		} else {
 			wrappers = append(wrappers, wrapper)
 		}
@@ -200,7 +200,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			if port != 0 {
 				message := &Message{
 					SequenceNumber: group.nextSequenceNumber(),
-					Type:           messageTypeSet,
+					Type:           MessageTypeSet,
 					Group:          group.name,
 					Name:           wrapper.consumer.GetName(),
 					Value:          value,
@@ -212,7 +212,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 
 		group.multicastPipe.sndChannel <- MessageAndAddr{Message: encodeMessage(&Message{
 			SequenceNumber: group.nextSequenceNumber(),
-			Type:           messageTypeGet,
+			Type:           MessageTypeGet,
 			Group:          group.name,
 			Name:           consumer.GetName(),
 		}), Addr: group.multicastPipe.addr}
@@ -247,7 +247,7 @@ func (group *RegisterGroup) readPipes() {
 		}
 
 		switch message.Type {
-		case messageTypeUpdate:
+		case MessageTypeUpdate:
 
 			group.consumersMutex.Lock()
 			consumers := group.consumers[message.Name]
@@ -259,7 +259,7 @@ func (group *RegisterGroup) readPipes() {
 			}
 			group.consumersMutex.Unlock()
 
-		case messageTypeSet:
+		case MessageTypeSet:
 			group.providersMutex.Lock()
 			providerWrapper := group.providers[message.Name]
 			group.providersMutex.Unlock()
@@ -268,7 +268,7 @@ func (group *RegisterGroup) readPipes() {
 				providerWrapper.provider.SetEncodedValue(message.Value)
 			}
 
-		case messageTypeGet:
+		case MessageTypeGet:
 			group.providersMutex.Lock()
 			providerWrapper := group.providers[message.Name]
 			group.providersMutex.Unlock()
@@ -283,12 +283,12 @@ func (group *RegisterGroup) readPipes() {
 	}
 }
 
-func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value Optional[[]byte]) {
+func (group *RegisterGroup) updateConsumerValue(wrapper *consumerWrapper, value Optional[[]byte]) {
 
 	if wrapper.timeout != nil {
 		wrapper.timeout.Stop()
 	}
-	wrapper.timeout = time.AfterFunc(updateTimeout, func() {
+	wrapper.timeout = time.AfterFunc(UpdateTimeout, func() {
 		wrapper.consumer.UpdateValue(NewUndefined[[]byte]())
 	})
 
@@ -302,11 +302,11 @@ func (group *RegisterGroup) nextSequenceNumber() uint16 {
 	return group.sequenceNumber
 }
 
-func (group *RegisterGroup) updateLoop(providerWrapper *ProviderWrapper) {
+func (group *RegisterGroup) updateLoop(providerWrapper *providerWrapper) {
 	port := group.unicastPipe.conn.LocalAddr().(*net.UDPAddr).Port
 	for {
 
-		regular := time.After(minUpdatePeriod + time.Duration(rand.Intn(int(maxUpdatePeriod-minUpdatePeriod))))
+		regular := time.After(MinUpdatePeriod + time.Duration(rand.Intn(int(MaxUpdatePeriod-MinUpdatePeriod))))
 
 		select {
 		case <-regular:
@@ -324,7 +324,7 @@ func (group *RegisterGroup) sendUpdateMessage(provider Provider, port int) {
 
 	msg := &Message{
 		SequenceNumber: group.nextSequenceNumber(),
-		Type:           messageTypeUpdate,
+		Type:           MessageTypeUpdate,
 		Group:          group.name,
 		Port:           uint16(port),
 		Name:           provider.GetName(),
