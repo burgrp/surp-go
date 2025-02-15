@@ -86,12 +86,14 @@ function surp_proto.dissector(tvb, pinfo, tree)
         local reg_name = tvb(offset, reg_name_len):string()
         offset = offset + reg_name_len
 
+        info_str = info_str .. reg_name
+
         subtree:add(f_reg_name_len, tvb(reg_offset, 1))
         subtree:add(f_reg_name, tvb(reg_offset + 1, reg_name_len))
 
-        local reg_info = reg_name .. "="
-
         if msg_type == 0x01 or msg_type == 0x02 then
+
+            info_str = info_str .. "="
 
             if tvb:len() < offset + 2 then
                 return
@@ -115,7 +117,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
                 subtree:add(f_val, tvb(offset, val_len))
                 offset = offset + val_len
             end
-            reg_info = reg_info .. val_str
+            info_str = info_str .. val_str
 
             if msg_type == 0x01 then
 
@@ -163,9 +165,7 @@ function surp_proto.dissector(tvb, pinfo, tree)
                     meta_tree:add(f_meta_val_len, tvb(meta_val_offset, 1))
                     meta_tree:add(f_meta_val, tvb(meta_val_offset + 1, val_key_len))
                 end
-                reg_info = reg_info .. meta_str
-
-                info_str = info_str .. reg_info
+                info_str = info_str .. meta_str
 
                 if tvb:len() < offset + 2 then
                     return
