@@ -18,7 +18,3 @@ func GetVersionCommand() *cobra.Command {
 		},
 	}
 }
-
-func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Println(Version)
-}

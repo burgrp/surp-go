@@ -4,25 +4,26 @@ Simple UDP Register Protocol (SURP) - Lightweight M2M communication for IoT
 Protocol Overview:
 - Decentralized register-based communication using IPv6 multicast
 - Three fundamental operations:
- 1. Synchronization: Efficient value updates and register advertisement through multicast
- 2. Control: Set operations to RW registers
+ 1. Efficient value synchronization and register advertisement through multicast
+ 2. Set operations to RW registers
+ 3. Get operations to query RW/RO registers
 
 Key Components:
 1. Register Groups: Logical namespaces for register organization
 2. Registers: Named data entities with:
   - Value: Dynamically typed payload
   - Metadata: Description, unit, data type, etc.
-  - Lifecycle: Updated → Expired
+  - Lifecycle: Synced → Expired
 
 Protocol Characteristics:
 - Transport: UDP/IPv6 multicast (link-local scope ff02::/16)
 - MTU: Optimized for ≤512 byte payloads
-- Frequency: Periodic updates every 2-4 seconds and on value changes
+- Frequency: Periodic synchronization every 2-4 seconds or on value changes
 
 Message Types:
-- Update (0x01): Broadcast value updates
+- Sync (0x01): Broadcast value syncs
 - Set (0x02): Register modification attempts
-- Get (0x03): Challenge to send update message
+- Get (0x03): Challenge to send sync message
 
 Addressing Scheme:
 - IPv6 multicast address: ff02::cafe:face:1dea:1
@@ -48,7 +49,7 @@ Message Structure (Binary):
 	[2 bytes] Port for unicast operations (address to be determined from the packet)
 
 	All messages share the same encoding.
-	Update message sets all fields.
+	Sync message sets all fields.
 	Set message has no metadata and port (ends after value).
 	Get message has no value, metadata, or port (ends after register name).
 
@@ -72,25 +73,25 @@ import (
 )
 
 const (
-	MessageTypeUpdate = 0x01
-	MessageTypeSet    = 0x02
-	MessageTypeGet    = 0x03
-	UpdateTimeout     = 10 * time.Second
-	MinUpdatePeriod   = 2 * time.Second
-	MaxUpdatePeriod   = 4 * time.Second
+	MessageTypeSync = 0x01
+	MessageTypeSet  = 0x02
+	MessageTypeGet  = 0x03
+	SyncTimeout     = 10 * time.Second
+	MinSyncPeriod   = 2 * time.Second
+	MaxSyncPeriod   = 4 * time.Second
 )
 
 type Provider interface {
 	GetName() string
 	GetEncodedValue() (Optional[[]byte], map[string]string)
 	SetEncodedValue(Optional[[]byte])
-	Attach(updateListener func())
+	Attach(syncListener func())
 }
 
 type Consumer interface {
 	GetName() string
 	SetMetadata(map[string]string)
-	UpdateValue(Optional[[]byte])
+	SyncValue(Optional[[]byte])
 	Attach(setListener func(Optional[[]byte]))
 }
 
@@ -105,8 +106,8 @@ type consumerWrapper struct {
 }
 
 type providerWrapper struct {
-	provider      Provider
-	updateChannel chan struct{}
+	provider    Provider
+	syncChannel chan struct{}
 }
 
 type RegisterGroup struct {
@@ -161,8 +162,8 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 	for _, provider := range providers {
 
 		providerWrapper := &providerWrapper{
-			provider:      provider,
-			updateChannel: make(chan struct{}),
+			provider:    provider,
+			syncChannel: make(chan struct{}),
 		}
 
 		group.providersMutex.Lock()
@@ -170,10 +171,10 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 		group.providersMutex.Unlock()
 
 		provider.Attach(func() {
-			providerWrapper.updateChannel <- struct{}{}
+			providerWrapper.syncChannel <- struct{}{}
 		})
 
-		go group.updateLoop(providerWrapper)
+		go group.syncLoop(providerWrapper)
 	}
 }
 
@@ -247,7 +248,7 @@ func (group *RegisterGroup) readPipes() {
 		}
 
 		switch message.Type {
-		case MessageTypeUpdate:
+		case MessageTypeSync:
 
 			group.consumersMutex.Lock()
 			consumers := group.consumers[message.Name]
@@ -255,7 +256,7 @@ func (group *RegisterGroup) readPipes() {
 				wrapper.setIP = m.Addr.IP
 				wrapper.setPort = message.Port
 				wrapper.consumer.SetMetadata(message.Metadata)
-				group.updateConsumerValue(wrapper, message.Value)
+				group.syncConsumerValue(wrapper, message.Value)
 			}
 			group.consumersMutex.Unlock()
 
@@ -274,7 +275,7 @@ func (group *RegisterGroup) readPipes() {
 			group.providersMutex.Unlock()
 
 			if providerWrapper != nil {
-				providerWrapper.updateChannel <- struct{}{}
+				providerWrapper.syncChannel <- struct{}{}
 			}
 
 		default:
@@ -283,16 +284,16 @@ func (group *RegisterGroup) readPipes() {
 	}
 }
 
-func (group *RegisterGroup) updateConsumerValue(wrapper *consumerWrapper, value Optional[[]byte]) {
+func (group *RegisterGroup) syncConsumerValue(wrapper *consumerWrapper, value Optional[[]byte]) {
 
 	if wrapper.timeout != nil {
 		wrapper.timeout.Stop()
 	}
-	wrapper.timeout = time.AfterFunc(UpdateTimeout, func() {
-		wrapper.consumer.UpdateValue(NewUndefined[[]byte]())
+	wrapper.timeout = time.AfterFunc(SyncTimeout, func() {
+		wrapper.consumer.SyncValue(NewUndefined[[]byte]())
 	})
 
-	wrapper.consumer.UpdateValue(value)
+	wrapper.consumer.SyncValue(value)
 }
 
 func (group *RegisterGroup) nextSequenceNumber() uint16 {
@@ -302,29 +303,29 @@ func (group *RegisterGroup) nextSequenceNumber() uint16 {
 	return group.sequenceNumber
 }
 
-func (group *RegisterGroup) updateLoop(providerWrapper *providerWrapper) {
+func (group *RegisterGroup) syncLoop(providerWrapper *providerWrapper) {
 	port := group.unicastPipe.conn.LocalAddr().(*net.UDPAddr).Port
 	for {
 
-		regular := time.After(MinUpdatePeriod + time.Duration(rand.Intn(int(MaxUpdatePeriod-MinUpdatePeriod))))
+		regular := time.After(MinSyncPeriod + time.Duration(rand.Intn(int(MaxSyncPeriod-MinSyncPeriod))))
 
 		select {
 		case <-regular:
-			group.sendUpdateMessage(providerWrapper.provider, port)
-		case <-providerWrapper.updateChannel:
-			group.sendUpdateMessage(providerWrapper.provider, port)
+			group.sendSyncMessage(providerWrapper.provider, port)
+		case <-providerWrapper.syncChannel:
+			group.sendSyncMessage(providerWrapper.provider, port)
 		}
 
 	}
 }
 
-func (group *RegisterGroup) sendUpdateMessage(provider Provider, port int) {
+func (group *RegisterGroup) sendSyncMessage(provider Provider, port int) {
 
 	value, metadata := provider.GetEncodedValue()
 
 	msg := &Message{
 		SequenceNumber: group.nextSequenceNumber(),
-		Type:           MessageTypeUpdate,
+		Type:           MessageTypeSync,
 		Group:          group.name,
 		Port:           uint16(port),
 		Name:           provider.GetName(),

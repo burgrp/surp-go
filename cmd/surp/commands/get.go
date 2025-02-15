@@ -69,7 +69,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 			fmt.Println(value)
 		case <-cmd.Context().Done():
 			break
-		case <-time.After(surp.UpdateTimeout):
+		case <-time.After(surp.SyncTimeout):
 			return fmt.Errorf("timeout")
 		}
 	}

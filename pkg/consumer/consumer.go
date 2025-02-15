@@ -2,26 +2,26 @@ package consumer
 
 import surp "github.com/burgrp-go/surp/pkg"
 
-type UpdateListener[T any] func(surp.Optional[T])
+type SyncListener[T any] func(surp.Optional[T])
 
 type Register[T comparable] struct {
-	name            string
-	value           surp.Optional[T]
-	encoder         surp.Encoder[T]
-	decoder         surp.Decoder[T]
-	metadata        surp.Optional[map[string]string]
-	updateListeners []UpdateListener[T]
-	setListener     func(surp.Optional[[]byte])
-	firstUpdate     bool
+	name          string
+	value         surp.Optional[T]
+	encoder       surp.Encoder[T]
+	decoder       surp.Decoder[T]
+	metadata      surp.Optional[map[string]string]
+	syncListeners []SyncListener[T]
+	setListener   func(surp.Optional[[]byte])
+	firstSync     bool
 }
 
-func NewRegister[T comparable](name string, encoder surp.Encoder[T], decoder surp.Decoder[T], listeners ...UpdateListener[T]) *Register[T] {
+func NewRegister[T comparable](name string, encoder surp.Encoder[T], decoder surp.Decoder[T], listeners ...SyncListener[T]) *Register[T] {
 	consumer := &Register[T]{
-		name:            name,
-		encoder:         encoder,
-		decoder:         decoder,
-		updateListeners: listeners,
-		firstUpdate:     true,
+		name:          name,
+		encoder:       encoder,
+		decoder:       decoder,
+		syncListeners: listeners,
+		firstSync:     true,
 	}
 
 	return consumer
@@ -35,7 +35,7 @@ func (reg *Register[T]) GetMetadata() surp.Optional[map[string]string] {
 	return reg.metadata
 }
 
-func (reg *Register[T]) UpdateValue(encodedValue surp.Optional[[]byte]) {
+func (reg *Register[T]) SyncValue(encodedValue surp.Optional[[]byte]) {
 
 	var newValue surp.Optional[T]
 	if encodedValue.IsDefined() {
@@ -44,10 +44,10 @@ func (reg *Register[T]) UpdateValue(encodedValue surp.Optional[[]byte]) {
 			newValue = surp.NewDefined(ev)
 		}
 	}
-	if newValue != reg.value || reg.firstUpdate {
+	if newValue != reg.value || reg.firstSync {
 		reg.value = newValue
-		reg.firstUpdate = false
-		for _, listener := range reg.updateListeners {
+		reg.firstSync = false
+		for _, listener := range reg.syncListeners {
 			listener(reg.value)
 		}
 	}
@@ -75,23 +75,23 @@ func (reg *Register[T]) SetMetadata(md map[string]string) {
 	reg.metadata = surp.NewDefined(md)
 }
 
-func NewStringRegister(name string, listeners ...UpdateListener[string]) *Register[string] {
+func NewStringRegister(name string, listeners ...SyncListener[string]) *Register[string] {
 	return NewRegister[string](name, surp.EncodeString, surp.DecodeString, listeners...)
 }
 
-func NewIntRegister(name string, listeners ...UpdateListener[int64]) *Register[int64] {
+func NewIntRegister(name string, listeners ...SyncListener[int64]) *Register[int64] {
 	return NewRegister[int64](name, surp.EncodeInt, surp.DecodeInt, listeners...)
 }
 
-func NewBoolRegister(name string, listeners ...UpdateListener[bool]) *Register[bool] {
+func NewBoolRegister(name string, listeners ...SyncListener[bool]) *Register[bool] {
 	return NewRegister[bool](name, surp.EncodeBool, surp.DecodeBool, listeners...)
 }
 
-func NewFloatRegister(name string, listeners ...UpdateListener[float64]) *Register[float64] {
+func NewFloatRegister(name string, listeners ...SyncListener[float64]) *Register[float64] {
 	return NewRegister[float64](name, surp.EncodeFloat, surp.DecodeFloat, listeners...)
 }
 
-func NewAnyRegister(name string, listeners ...UpdateListener[any]) *Register[any] {
+func NewAnyRegister(name string, listeners ...SyncListener[any]) *Register[any] {
 
 	var reg *Register[any]
 

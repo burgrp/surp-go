@@ -58,7 +58,7 @@ func parseString(value string, typ string) (any, error) {
 	}
 }
 
-func setRegisterValue(register *consumer.Register[any], desired string, timeout time.Duration, updates chan surp.Optional[any]) error {
+func setRegisterValue(register *consumer.Register[any], desired string, timeout time.Duration, syncs chan surp.Optional[any]) error {
 	to := time.After(timeout)
 
 Wait:
@@ -66,7 +66,7 @@ Wait:
 		select {
 		case <-to:
 			return errors.New("timeout waiting for register to be set")
-		case actual := <-updates:
+		case actual := <-syncs:
 			if register.GetMetadata().IsDefined() {
 				typ := register.GetMetadata().Get()["type"]
 				if typ != "" {
@@ -116,21 +116,21 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	updates := make(chan surp.Optional[any])
+	syncs := make(chan surp.Optional[any])
 
 	register := consumer.NewAnyRegister(name, func(value surp.Optional[any]) {
-		updates <- value
+		syncs <- value
 	})
 
 	group.AddConsumers(register)
 
-	setRegisterValue(register, args[1], timeout, updates)
+	setRegisterValue(register, args[1], timeout, syncs)
 
 	if stay {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			v := scanner.Text()
-			setRegisterValue(register, v, timeout, updates)
+			setRegisterValue(register, v, timeout, syncs)
 		}
 		if err := scanner.Err(); err != nil {
 			return err

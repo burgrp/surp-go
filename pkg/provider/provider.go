@@ -7,14 +7,14 @@ import (
 )
 
 type Register[T comparable] struct {
-	name           string
-	value          surp.Optional[T]
-	encoder        surp.Encoder[T]
-	decoder        surp.Decoder[T]
-	rw             bool
-	metadata       map[string]string
-	setListener    SetListener[T]
-	updateListener func()
+	name         string
+	value        surp.Optional[T]
+	encoder      surp.Encoder[T]
+	decoder      surp.Decoder[T]
+	rw           bool
+	metadata     map[string]string
+	setListener  SetListener[T]
+	syncListener func()
 }
 
 type SetListener[T any] func(surp.Optional[T])
@@ -48,8 +48,8 @@ func (reg *Register[T]) GetValue() surp.Optional[T] {
 	return reg.value
 }
 
-func (reg *Register[T]) Attach(updateListener func()) {
-	reg.updateListener = updateListener
+func (reg *Register[T]) Attach(syncListener func()) {
+	reg.syncListener = syncListener
 }
 
 func (reg *Register[T]) SetEncodedValue(encodedValue surp.Optional[[]byte]) {
@@ -68,11 +68,11 @@ func (reg *Register[T]) SetEncodedValue(encodedValue surp.Optional[[]byte]) {
 	reg.setListener(decodedValue)
 }
 
-func (reg *Register[T]) UpdateValue(value surp.Optional[T]) {
+func (reg *Register[T]) SyncValue(value surp.Optional[T]) {
 	if value != reg.value {
 		reg.value = value
-		if reg.updateListener != nil {
-			reg.updateListener()
+		if reg.syncListener != nil {
+			reg.syncListener()
 		}
 	}
 }

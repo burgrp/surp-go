@@ -1,7 +1,7 @@
 local surp_proto = Proto("surp", "SURP Protocol")
 
 local message_types = {
-    [0x01] = "update",
+    [0x01] = "sync",
     [0x02] = "set",
     [0x03] = "get"
 }
