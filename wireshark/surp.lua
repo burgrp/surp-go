@@ -180,6 +180,8 @@ function surp_proto.dissector(tvb, pinfo, tree)
         info_str = info_str .. "Unknown"
     end
 
+    subtree:append_text(" " .. info_str)
+
     pinfo.cols.info = info_str
 end
 
