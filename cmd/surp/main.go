@@ -26,6 +26,7 @@ func main() {
 	RootCmd.AddCommand(
 		commands.GetGetCommand(),
 		commands.GetSetCommand(),
+		commands.GetListCommand(),
 		commands.GetVersionCommand(),
 	)
 

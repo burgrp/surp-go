@@ -25,7 +25,7 @@ Values are specified as JSON expressions, e.g. true, false, 3.14, "hello world" 
 	}
 
 	cmd.Flags().BoolP("stay", "s", false, "Stay connected, read values from stdin and write changes to stdout")
-	cmd.Flags().DurationP("timeout", "o", 30*time.Second, "Timeout for waiting for the register to be set")
+	cmd.Flags().DurationP("timeout", "o", surp.SyncTimeout, "Timeout for waiting for the register to be set")
 	cmd.Args = cobra.ExactArgs(2)
 
 	return cmd

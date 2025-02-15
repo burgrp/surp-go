@@ -124,6 +124,8 @@ type RegisterGroup struct {
 
 	sequenceNumber      uint16
 	sequenceNumberMutex sync.Mutex
+
+	syncListener func(*Message)
 }
 
 func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
@@ -247,6 +249,10 @@ func (group *RegisterGroup) readPipes() {
 			continue
 		}
 
+		if message.Group != group.name {
+			continue
+		}
+
 		switch message.Type {
 		case MessageTypeSync:
 
@@ -259,6 +265,10 @@ func (group *RegisterGroup) readPipes() {
 				group.syncConsumerValue(wrapper, message.Value)
 			}
 			group.consumersMutex.Unlock()
+
+			if group.syncListener != nil {
+				group.syncListener(message)
+			}
 
 		case MessageTypeSet:
 			group.providersMutex.Lock()
@@ -335,4 +345,8 @@ func (group *RegisterGroup) sendSyncMessage(provider Provider, port int) {
 
 	data := encodeMessage(msg)
 	group.multicastPipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.multicastPipe.addr}
+}
+
+func (group *RegisterGroup) OnSync(listener func(*Message)) {
+	group.syncListener = listener
 }
