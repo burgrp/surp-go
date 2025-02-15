@@ -51,10 +51,10 @@ Advertise Message:
 			[1 byte]  Value length (V)
 			[V bytes] Value
 
-Update Message:
+Update/Set Message:
 
 	[4 bytes]  Magic number "SURP"
-	[1 byte]  Message type (0x02)
+	[1 byte]  Message type (0x02 for update, 0x03 for set)
 	[2 bytes] Sequence number
 	[1 byte]  Group name length (G)
 	[G bytes] Group name
@@ -64,6 +64,14 @@ Update Message:
 		[N bytes] Register name
 		[2 bytes] Value length (V) (see Value length in Advertise message)
 		[V bytes] Value
+
+Join Message:
+
+	[4 bytes]  Magic number "SURP"
+	[1 byte]  Message type (0x04)
+	[2 bytes] Sequence number
+	[1 byte]  Group name length (G)
+	[G bytes] Group name
 
 Implementation Notes:
 1. Security model assumes protected network layer
@@ -88,6 +96,7 @@ const (
 	messageTypeAdvertise = 0x01
 	messageTypeUpdate    = 0x02
 	messageTypeSet       = 0x03
+	messageTypeJoin      = 0x04
 	updateTimeout        = 10 * time.Second
 	minAdvertisePeriod   = 2 * time.Second
 	maxAdvertisePeriod   = 4 * time.Second
@@ -132,6 +141,8 @@ type RegisterGroup struct {
 
 	sequenceNumber      uint16
 	sequenceNumberMutex sync.Mutex
+
+	joinChannel chan struct{}
 }
 
 func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
@@ -142,10 +153,11 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 	}
 
 	group := &RegisterGroup{
-		name:       groupName,
-		rcvChannel: make(chan MessageAndAddr),
-		providers:  make(map[string]Provider),
-		consumers:  make(map[string][]*ConsumerWrapper),
+		name:        groupName,
+		rcvChannel:  make(chan MessageAndAddr),
+		providers:   make(map[string]Provider),
+		consumers:   make(map[string][]*ConsumerWrapper),
+		joinChannel: make(chan struct{}),
 	}
 
 	pipe, err := NewMulticastPipe(in, fmt.Sprintf("%s:advertise", groupName), group.rcvChannel)
@@ -230,6 +242,11 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			}
 		})
 	}
+
+	group.advertisePipe.sndChannel <- MessageAndAddr{Message: encodeJoinMessage(&JoinMessage{
+		SequenceNumber: group.nextSequenceNumber(),
+		GroupName:      group.name,
+	}), Addr: group.advertisePipe.addr}
 }
 
 func (group *RegisterGroup) Close() error {
@@ -272,6 +289,12 @@ func (group *RegisterGroup) readPipes() {
 			setMessage, ok := decodeSetMessage(messageData)
 			if ok {
 				group.handleSetMessage(setMessage)
+			}
+
+		case messageTypeJoin:
+			joinMessage, ok := decodeJoinMessage(messageData)
+			if ok {
+				group.handleJoinMessage(joinMessage, m.Addr)
 			}
 
 		default:
@@ -328,6 +351,15 @@ func (group *RegisterGroup) handleSetMessage(msg *SetMessage) {
 	}
 }
 
+func (group *RegisterGroup) handleJoinMessage(msg *JoinMessage, ip *net.UDPAddr) {
+
+	if group.name != msg.GroupName {
+		return
+	}
+
+	group.joinChannel <- struct{}{}
+}
+
 func (group *RegisterGroup) updateConsumerValue(wrapper *ConsumerWrapper, value Optional[[]byte]) {
 
 	if wrapper.timeout != nil {
@@ -351,29 +383,39 @@ func (group *RegisterGroup) advertiseLoop() {
 	port := group.setPipe.conn.LocalAddr().(*net.UDPAddr).Port
 	for {
 
-		//TODO send multiple registers in one message, split if necessary to fit into MTU
-		for _, p := range group.providers {
+		regular := time.After(minAdvertisePeriod + time.Duration(rand.Intn(int(maxAdvertisePeriod-minAdvertisePeriod))))
 
-			metadata, value := p.GetMetadata()
+		select {
 
-			msg := &AdvertiseMessage{
-				SequenceNumber: group.nextSequenceNumber(),
-				GroupName:      group.name,
-				Port:           uint16(port),
-				Registers: []AdvertisedRegister{
-					{
-						Name:     p.GetName(),
-						Value:    value,
-						Metadata: metadata,
-					},
-				},
-			}
-
-			data := encodeAdvertiseMessage(msg)
-			group.advertisePipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.advertisePipe.addr}
+		case <-regular:
+			group.sendAdvertiseMessage(port)
+		case <-group.joinChannel:
+			group.sendAdvertiseMessage(port)
 		}
 
-		sleep := minAdvertisePeriod + time.Duration(rand.Intn(int(maxAdvertisePeriod-minAdvertisePeriod)))
-		time.Sleep(sleep)
+	}
+}
+
+func (group *RegisterGroup) sendAdvertiseMessage(port int) {
+	//TODO send multiple registers in one message, split if necessary to fit into MTU
+	for _, p := range group.providers {
+
+		metadata, value := p.GetMetadata()
+
+		msg := &AdvertiseMessage{
+			SequenceNumber: group.nextSequenceNumber(),
+			GroupName:      group.name,
+			Port:           uint16(port),
+			Registers: []AdvertisedRegister{
+				{
+					Name:     p.GetName(),
+					Value:    value,
+					Metadata: metadata,
+				},
+			},
+		}
+
+		data := encodeAdvertiseMessage(msg)
+		group.advertisePipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.advertisePipe.addr}
 	}
 }

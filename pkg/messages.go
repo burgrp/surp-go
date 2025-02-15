@@ -31,6 +31,11 @@ type UpdateMessage struct {
 	Registers      []UpdatedRegister
 }
 
+type JoinMessage struct {
+	SequenceNumber uint16
+	GroupName      string
+}
+
 type SetMessage UpdateMessage
 
 func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
@@ -282,4 +287,37 @@ func encodeSetMessage(msg *SetMessage) []byte {
 func decodeSetMessage(data []byte) (*SetMessage, bool) {
 	msg, ok := decodeValueMessage(data)
 	return (*SetMessage)(msg), ok
+}
+
+func encodeJoinMessage(msg *JoinMessage) []byte {
+	var buf bytes.Buffer
+
+	buf.WriteString(magicString)
+	buf.WriteByte(messageTypeJoin)
+	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
+	buf.WriteByte(byte(len(msg.GroupName)))
+	buf.WriteString(msg.GroupName)
+
+	return buf.Bytes()
+}
+
+func decodeJoinMessage(data []byte) (*JoinMessage, bool) {
+
+	remaining := data[:]
+
+	msg := &JoinMessage{}
+
+	sequenceNumber, ok := readUint16(&remaining)
+	if !ok {
+		return nil, false
+	}
+	msg.SequenceNumber = sequenceNumber
+
+	groupName, ok := readString(&remaining)
+	if !ok {
+		return nil, false
+	}
+	msg.GroupName = groupName
+
+	return msg, true
 }

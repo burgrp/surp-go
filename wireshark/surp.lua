@@ -221,6 +221,25 @@ function surp_proto.dissector(tvb, pinfo, tree)
             info_str = info_str .. reg_name .. "=" .. val_str
         end
 
+    elseif msg_type == 0x04 then
+        -- Join Message
+
+        if tvb:len() < offset + 2 then return end
+        subtree:add(f_seq, tvb(offset,2))
+        offset = offset + 2
+
+        if tvb:len() < offset + 1 then return end
+        local grp_len = tvb(offset,1):uint()
+        subtree:add(f_group_len, tvb(offset,1))
+        offset = offset + 1
+
+        if tvb:len() < offset + grp_len then return end
+        local group_name = tvb(offset,grp_len):string()
+        subtree:add(f_group, tvb(offset,grp_len))
+        offset = offset + grp_len
+
+        info_str = group_name .. " join "
+
     else
         subtree:add_expert_info(PI_MALFORMED, PI_ERROR, "Unknown SURP message type")
         info_str = info_str .. "Unknown"

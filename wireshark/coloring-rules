@@ -1,3 +1,4 @@
-@SURP Set@surp.msg_type==3@[65535,63993,55255][65535,21845,0]
-@SURP Update@surp.msg_type==2@[65535,63993,55255][0,43690,0]
 @SURP Advertise@surp.msg_type==1@[65535,63993,55255][0,21845,65535]
+@SURP Update@surp.msg_type==2@[65535,63993,55255][0,43690,0]
+@SURP Set@surp.msg_type==3@[65535,63993,55255][65535,21845,0]
+@SURP Join@surp.msg_type==4@[65535,63993,55255][3084,45489,51914]
