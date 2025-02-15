@@ -13,12 +13,10 @@ func GetGetCommand() *cobra.Command {
 		Use:   "get <register>",
 		Short: "Read a register",
 		Long: `Reads the specified register.
-	With --stay flag, the command will remain connected and write any changes to stdout.
-	Without --type flag, the type of the register is determined from metadata which is slower.`,
+	With --stay flag, the command will remain connected and write any changes to stdout.`,
 		RunE: runGet,
 	}
 
-	cmd.Flags().StringP("type", "t", "", "Type of the register: string, int, float, bool")
 	cmd.Flags().BoolP("stay", "s", false, "Stay connected and write changes to stdout")
 	cmd.Args = cobra.ExactArgs(1)
 
@@ -38,11 +36,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	typ, err := cmd.Flags().GetString("type")
-	if err != nil {
-		return err
-	}
-
 	group, err := surp.JoinGroup(env.Interface, env.Group)
 	if err != nil {
 		return err
@@ -50,9 +43,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	values := make(chan surp.Optional[any])
 
-	print("Reading register: ", name, "\n")
 	group.AddConsumers(
-		consumer.NewAnyRegister(name, typ, func(value surp.Optional[any]) {
+		consumer.NewAnyRegister(name, func(value surp.Optional[any]) {
 			values <- value
 		}),
 	)

@@ -87,60 +87,23 @@ func NewFloatRegister(name string, listeners ...UpdateListener[float64]) *Regist
 	return NewRegister[float64](name, surp.EncodeFloat, surp.DecodeFloat, listeners...)
 }
 
-func NewAnyRegister(name string, typ string, listeners ...UpdateListener[any]) *Register[any] {
+func NewAnyRegister(name string, listeners ...UpdateListener[any]) *Register[any] {
 
 	var reg *Register[any]
 
-	checkMetaType := func() {
+	getType := func() string {
 		omd := reg.GetMetadata()
 		if omd.IsDefined() {
-			t := omd.Get()["type"]
-			if t != "" {
-				typ = t
-			}
+			return omd.Get()["type"]
 		}
+		return ""
 	}
 
-	encodeJson := func(value any) []byte {
-		checkMetaType()
+	reg = NewRegister[any](name, func(value any) []byte {
+		return surp.EncodeGeneric(value, getType())
+	}, func(b []byte) (any, bool) {
+		return surp.DecodeGeneric(b, getType())
+	}, listeners...)
 
-		switch typ {
-		case "string":
-			return surp.EncodeString(value.(string))
-
-		case "int":
-			return surp.EncodeInt(value.(int64))
-
-		case "bool":
-			return surp.EncodeBool(value.(bool))
-
-		case "float":
-			return surp.EncodeFloat(value.(float64))
-		}
-
-		return nil
-	}
-
-	decodeJson := func(b []byte) (any, bool) {
-		checkMetaType()
-
-		switch typ {
-		case "string":
-			return surp.DecodeString(b)
-
-		case "int":
-			return surp.DecodeInt(b)
-
-		case "bool":
-			return surp.DecodeBool(b)
-
-		case "float":
-			return surp.DecodeFloat(b)
-
-		}
-		return nil, false
-	}
-
-	reg = NewRegister[any](name, encodeJson, decodeJson, listeners...)
 	return reg
 }

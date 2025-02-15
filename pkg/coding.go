@@ -54,3 +54,39 @@ func DecodeFloat(b []byte) (float64, bool) {
 	bits := binary.BigEndian.Uint64(b)
 	return math.Float64frombits(bits), true
 }
+
+func EncodeGeneric(v any, typ string) []byte {
+	switch typ {
+	case "string":
+		return EncodeString(v.(string))
+
+	case "int":
+		return EncodeInt(v.(int64))
+
+	case "bool":
+		return EncodeBool(v.(bool))
+
+	case "float":
+		return EncodeFloat(v.(float64))
+	}
+
+	return nil
+}
+
+func DecodeGeneric(b []byte, typ string) (any, bool) {
+	switch typ {
+	case "string":
+		return DecodeString(b)
+
+	case "int":
+		return DecodeInt(b)
+
+	case "bool":
+		return DecodeBool(b)
+
+	case "float":
+		return DecodeFloat(b)
+
+	}
+	return nil, false
+}

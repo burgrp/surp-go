@@ -25,10 +25,9 @@
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
-                "get",
+                "set",
                 "r2",
-                "-t",
-                "int"
+                "100"
             ],
             "env": {
                 "SURP_IF": "wlp3s0",
