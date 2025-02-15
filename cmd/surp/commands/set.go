@@ -31,27 +31,6 @@ Values are specified as JSON expressions, e.g. true, false, 3.14, "hello world" 
 	return cmd
 }
 
-// func jsonEquals(a, b string) bool {
-// 	valueA := new(interface{})
-// 	err := json.Unmarshal([]byte(a), valueA)
-// 	if err != nil {
-// 		return false
-// 	}
-
-// 	valueB := new(interface{})
-// 	err = json.Unmarshal([]byte(b), valueB)
-// 	if err != nil {
-// 		return false
-// 	}
-
-// 	equals, err := reflect.DeepEqual(valueA, valueB), nil
-// 	if err != nil {
-// 		return false
-// 	}
-
-// 	return equals
-// }
-
 func parseString(value string, typ string) (any, error) {
 	switch typ {
 	case "string":
