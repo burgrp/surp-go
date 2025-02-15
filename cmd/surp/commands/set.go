@@ -98,6 +98,7 @@ Wait:
 					d := surp.NewDefined(v)
 
 					if actual == d {
+						println(desired)
 						break Wait
 					}
 
