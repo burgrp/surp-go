@@ -7,61 +7,43 @@ import (
 
 const magicString = "SURP"
 
-type AdvertisedRegister struct {
-	Name     string
-	Value    Optional[[]byte]
-	Metadata map[string]string
-}
-
-type AdvertiseMessage struct {
+type Message struct {
 	SequenceNumber uint16
-	GroupName      string
+	Type           byte
+	Group          string
+	Name           string
+	Value          Optional[[]byte]
+	Metadata       map[string]string
 	Port           uint16
-	Registers      []AdvertisedRegister
 }
 
-type UpdatedRegister struct {
-	Name  string
-	Value Optional[[]byte]
-}
-
-type UpdateMessage struct {
-	SequenceNumber uint16
-	GroupName      string
-	Registers      []UpdatedRegister
-}
-
-type JoinMessage struct {
-	SequenceNumber uint16
-	GroupName      string
-}
-
-type SetMessage UpdateMessage
-
-func encodeAdvertiseMessage(msg *AdvertiseMessage) []byte {
+func encodeMessage(msg *Message) []byte {
 	var buf bytes.Buffer
 
 	buf.WriteString(magicString)
-	buf.WriteByte(messageTypeAdvertise)
+	buf.WriteByte(msg.Type)
 	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
-	buf.WriteByte(byte(len(msg.GroupName)))
-	buf.WriteString(msg.GroupName)
-	binary.Write(&buf, binary.BigEndian, msg.Port)
+	buf.WriteByte(byte(len(msg.Group)))
+	buf.WriteString(msg.Group)
+	buf.WriteByte(byte(len(msg.Name)))
+	buf.WriteString(msg.Name)
 
-	buf.WriteByte(byte(len(msg.Registers)))
-	for _, r := range msg.Registers {
-		buf.WriteByte(byte(len(r.Name)))
-		buf.WriteString(r.Name)
-		writeValue(r.Value, &buf)
-		buf.WriteByte(byte(len(r.Metadata)))
-		for k, v := range r.Metadata {
-			buf.WriteByte(byte(len(k)))
-			buf.WriteString(k)
-			buf.WriteByte(byte(len(v)))
-			buf.WriteString(v)
+	if msg.Type == messageTypeUpdate || msg.Type == messageTypeSet {
+
+		writeValue(msg.Value, &buf)
+
+		if msg.Type == messageTypeUpdate {
+
+			buf.WriteByte(byte(len(msg.Metadata)))
+			for k, v := range msg.Metadata {
+				buf.WriteByte(byte(len(k)))
+				buf.WriteString(k)
+				buf.WriteByte(byte(len(v)))
+				buf.WriteString(v)
+			}
+			binary.Write(&buf, binary.BigEndian, msg.Port)
 		}
 	}
-
 	return buf.Bytes()
 }
 
@@ -131,11 +113,21 @@ func readValue(remaining *[]byte) (Optional[[]byte], bool) {
 	return value, true
 }
 
-func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
+func decodeMessage(data []byte) (*Message, bool) {
 
 	remaining := data[:]
 
-	msg := &AdvertiseMessage{}
+	msg := &Message{}
+
+	messageType, ok := readByte(&remaining)
+	if !ok {
+		return nil, false
+	}
+	msg.Type = messageType
+
+	if messageType != messageTypeGet && messageType != messageTypeSet && messageType != messageTypeUpdate {
+		return nil, false
+	}
 
 	sequenceNumber, ok := readUint16(&remaining)
 	if !ok {
@@ -143,181 +135,61 @@ func decodeAdvertiseMessage(data []byte) (*AdvertiseMessage, bool) {
 	}
 	msg.SequenceNumber = sequenceNumber
 
-	groupName, ok := readString(&remaining)
+	group, ok := readString(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.GroupName = groupName
+	msg.Group = group
 
-	port, ok := readUint16(&remaining)
+	name, ok := readString(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.Port = port
+	msg.Name = name
 
-	registerCount, ok := readByte(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	msg.Registers = make([]AdvertisedRegister, 0, registerCount)
-
-	for i := 0; i < int(registerCount); i++ {
-
-		registerName, ok := readString(&remaining)
-		if !ok {
-			return nil, false
-		}
+	if msg.Type == messageTypeUpdate || msg.Type == messageTypeSet {
 
 		value, ok := readValue(&remaining)
 		if !ok {
 			return nil, false
 		}
+		msg.Value = value
 
-		metadataCount, ok := readByte(&remaining)
-		if !ok {
-			return nil, false
-		}
+		if msg.Type == messageTypeUpdate {
 
-		metadata := make(map[string]string, metadataCount)
-
-		for j := 0; j < int(metadataCount); j++ {
-
-			key, ok := readString(&remaining)
+			metadataCount, ok := readByte(&remaining)
 			if !ok {
 				return nil, false
 			}
 
-			val, ok := readString(&remaining)
+			metadata := make(map[string]string, metadataCount)
+
+			for j := 0; j < int(metadataCount); j++ {
+
+				key, ok := readString(&remaining)
+				if !ok {
+					return nil, false
+				}
+
+				val, ok := readString(&remaining)
+				if !ok {
+					return nil, false
+				}
+
+				metadata[key] = val
+			}
+
+			msg.Metadata = metadata
+
+			port, ok := readUint16(&remaining)
 			if !ok {
 				return nil, false
 			}
+			msg.Port = port
 
-			metadata[key] = val
 		}
 
-		msg.Registers = append(msg.Registers, AdvertisedRegister{
-			Name:     registerName,
-			Value:    value,
-			Metadata: metadata,
-		})
 	}
-
-	return msg, true
-}
-
-func encodeValueMessage(messageType byte, msg *UpdateMessage) []byte {
-	var buf bytes.Buffer
-
-	buf.WriteString(magicString)
-	buf.WriteByte(messageType)
-	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
-	buf.WriteByte(byte(len(msg.GroupName)))
-	buf.WriteString(msg.GroupName)
-	buf.WriteByte(byte(len(msg.Registers)))
-	for _, register := range msg.Registers {
-		buf.WriteByte(byte(len(register.Name)))
-		buf.WriteString(register.Name)
-		writeValue(register.Value, &buf)
-	}
-
-	return buf.Bytes()
-}
-
-func decodeValueMessage(data []byte) (*UpdateMessage, bool) {
-
-	remaining := data[:]
-
-	msg := &UpdateMessage{}
-
-	sequenceNumber, ok := readUint16(&remaining)
-	if !ok {
-		return nil, false
-	}
-	msg.SequenceNumber = sequenceNumber
-
-	groupName, ok := readString(&remaining)
-	if !ok {
-		return nil, false
-	}
-	msg.GroupName = groupName
-
-	registerCount, ok := readByte(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	msg.Registers = make([]UpdatedRegister, 0, registerCount)
-
-	for i := 0; i < int(registerCount); i++ {
-
-		name, ok := readString(&remaining)
-		if !ok {
-			return nil, false
-		}
-
-		value, ok := readValue(&remaining)
-		if !ok {
-			return nil, false
-		}
-
-		msg.Registers = append(msg.Registers, UpdatedRegister{
-			Name:  name,
-			Value: value,
-		})
-
-	}
-
-	return msg, true
-}
-
-func encodeUpdateMessage(msg *UpdateMessage) []byte {
-	return encodeValueMessage(messageTypeUpdate, (*UpdateMessage)(msg))
-}
-
-func decodeUpdateMessage(data []byte) (*UpdateMessage, bool) {
-	msg, ok := decodeValueMessage(data)
-	return msg, ok
-}
-
-func encodeSetMessage(msg *SetMessage) []byte {
-	return encodeValueMessage(messageTypeSet, (*UpdateMessage)(msg))
-}
-
-func decodeSetMessage(data []byte) (*SetMessage, bool) {
-	msg, ok := decodeValueMessage(data)
-	return (*SetMessage)(msg), ok
-}
-
-func encodeJoinMessage(msg *JoinMessage) []byte {
-	var buf bytes.Buffer
-
-	buf.WriteString(magicString)
-	buf.WriteByte(messageTypeJoin)
-	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
-	buf.WriteByte(byte(len(msg.GroupName)))
-	buf.WriteString(msg.GroupName)
-
-	return buf.Bytes()
-}
-
-func decodeJoinMessage(data []byte) (*JoinMessage, bool) {
-
-	remaining := data[:]
-
-	msg := &JoinMessage{}
-
-	sequenceNumber, ok := readUint16(&remaining)
-	if !ok {
-		return nil, false
-	}
-	msg.SequenceNumber = sequenceNumber
-
-	groupName, ok := readString(&remaining)
-	if !ok {
-		return nil, false
-	}
-	msg.GroupName = groupName
 
 	return msg, true
 }
