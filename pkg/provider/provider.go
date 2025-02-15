@@ -6,7 +6,7 @@ import (
 	surp "github.com/burgrp-go/surp/pkg"
 )
 
-type Register[T any] struct {
+type Register[T comparable] struct {
 	name           string
 	value          surp.Optional[T]
 	encoder        surp.Encoder[T]
@@ -19,7 +19,7 @@ type Register[T any] struct {
 
 type SetListener[T any] func(surp.Optional[T])
 
-func NewRegister[T any](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string, setListener SetListener[T]) *Register[T] {
+func NewRegister[T comparable](name string, value surp.Optional[T], encoder surp.Encoder[T], decoder surp.Decoder[T], typ string, rw bool, metadata map[string]string, setListener SetListener[T]) *Register[T] {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
@@ -76,9 +76,11 @@ func (reg *Register[T]) SetValue(encodedValue surp.Optional[[]byte]) {
 }
 
 func (reg *Register[T]) UpdateValue(value surp.Optional[T]) {
-	reg.value = value
-	if reg.updateListener != nil {
-		reg.updateListener(reg.getEncodedValue())
+	if value != reg.value {
+		reg.value = value
+		if reg.updateListener != nil {
+			reg.updateListener(reg.getEncodedValue())
+		}
 	}
 }
 

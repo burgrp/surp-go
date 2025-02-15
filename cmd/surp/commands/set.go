@@ -70,18 +70,21 @@ Wait:
 			if register.GetMetadata().IsDefined() {
 				typ := register.GetMetadata().Get()["type"]
 				if typ != "" {
-					v, err := parseString(desired, typ)
-					if err != nil {
-						return err
+					des := surp.NewUndefined[any]()
+					if desired != "null" {
+						v, err := parseString(desired, typ)
+						if err != nil {
+							return err
+						}
+						des = surp.NewDefined(v)
 					}
-					d := surp.NewDefined(v)
 
-					if actual == d {
+					if actual == des {
 						println(desired)
 						break Wait
 					}
 
-					register.SetValue(d)
+					register.SetValue(des)
 				}
 			}
 		}

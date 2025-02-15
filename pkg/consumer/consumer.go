@@ -12,6 +12,7 @@ type Register[T comparable] struct {
 	metadata        surp.Optional[map[string]string]
 	updateListeners []UpdateListener[T]
 	setListener     func(surp.Optional[[]byte])
+	firstUpdate     bool
 }
 
 func NewRegister[T comparable](name string, encoder surp.Encoder[T], decoder surp.Decoder[T], listeners ...UpdateListener[T]) *Register[T] {
@@ -20,6 +21,7 @@ func NewRegister[T comparable](name string, encoder surp.Encoder[T], decoder sur
 		encoder:         encoder,
 		decoder:         decoder,
 		updateListeners: listeners,
+		firstUpdate:     true,
 	}
 
 	return consumer
@@ -42,8 +44,9 @@ func (reg *Register[T]) UpdateValue(encodedValue surp.Optional[[]byte]) {
 			newValue = surp.NewDefined(ev)
 		}
 	}
-	if newValue != reg.value {
+	if newValue != reg.value || reg.firstUpdate {
 		reg.value = newValue
+		reg.firstUpdate = false
 		for _, listener := range reg.updateListeners {
 			listener(reg.value)
 		}
@@ -60,10 +63,11 @@ func (reg *Register[T]) GetValue() surp.Optional[T] {
 
 func (reg *Register[T]) SetValue(value surp.Optional[T]) {
 	if reg.setListener != nil {
-		if value.IsUndefined() {
-			reg.setListener(surp.NewUndefined[[]byte]())
+		var encoded surp.Optional[[]byte]
+		if value.IsDefined() {
+			encoded = surp.NewDefined(reg.encoder(value.Get()))
 		}
-		reg.setListener(surp.NewDefined(reg.encoder(value.Get())))
+		reg.setListener(encoded)
 	}
 }
 
