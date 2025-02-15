@@ -82,9 +82,9 @@ const (
 
 type Provider interface {
 	GetName() string
-	GetMetadata() (map[string]string, Optional[[]byte])
-	SetValue(Optional[[]byte])
-	Attach(updateListener func(Optional[[]byte]))
+	GetEncodedValue() (Optional[[]byte], map[string]string)
+	SetEncodedValue(Optional[[]byte])
+	Attach(updateListener func())
 }
 
 type Consumer interface {
@@ -169,7 +169,7 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 		group.providers[provider.GetName()] = providerWrapper
 		group.providersMutex.Unlock()
 
-		provider.Attach(func(value Optional[[]byte]) {
+		provider.Attach(func() {
 			providerWrapper.updateChannel <- struct{}{}
 		})
 
@@ -265,7 +265,7 @@ func (group *RegisterGroup) readPipes() {
 			group.providersMutex.Unlock()
 
 			if providerWrapper != nil {
-				providerWrapper.provider.SetValue(message.Value)
+				providerWrapper.provider.SetEncodedValue(message.Value)
 			}
 
 		case messageTypeGet:
@@ -320,7 +320,7 @@ func (group *RegisterGroup) updateLoop(providerWrapper *ProviderWrapper) {
 
 func (group *RegisterGroup) sendUpdateMessage(provider Provider, port int) {
 
-	metadata, value := provider.GetMetadata()
+	value, metadata := provider.GetEncodedValue()
 
 	msg := &Message{
 		SequenceNumber: group.nextSequenceNumber(),

@@ -14,7 +14,7 @@ type Register[T comparable] struct {
 	rw             bool
 	metadata       map[string]string
 	setListener    SetListener[T]
-	updateListener func(surp.Optional[[]byte])
+	updateListener func()
 }
 
 type SetListener[T any] func(surp.Optional[T])
@@ -48,18 +48,11 @@ func (reg *Register[T]) GetValue() surp.Optional[T] {
 	return reg.value
 }
 
-func (reg *Register[T]) getEncodedValue() surp.Optional[[]byte] {
-	if !reg.value.IsDefined() {
-		return surp.NewUndefined[[]byte]()
-	}
-	return surp.NewDefined(reg.encoder(reg.value.Get()))
-}
-
-func (reg *Register[T]) Attach(updateListener func(surp.Optional[[]byte])) {
+func (reg *Register[T]) Attach(updateListener func()) {
 	reg.updateListener = updateListener
 }
 
-func (reg *Register[T]) SetValue(encodedValue surp.Optional[[]byte]) {
+func (reg *Register[T]) SetEncodedValue(encodedValue surp.Optional[[]byte]) {
 	if !reg.rw && reg.setListener != nil {
 		return
 	}
@@ -79,13 +72,20 @@ func (reg *Register[T]) UpdateValue(value surp.Optional[T]) {
 	if value != reg.value {
 		reg.value = value
 		if reg.updateListener != nil {
-			reg.updateListener(reg.getEncodedValue())
+			reg.updateListener()
 		}
 	}
 }
 
-func (reg *Register[T]) GetMetadata() (map[string]string, surp.Optional[[]byte]) {
-	return reg.metadata, reg.getEncodedValue()
+func (reg *Register[T]) GetEncodedValue() (surp.Optional[[]byte], map[string]string) {
+
+	value := surp.NewUndefined[[]byte]()
+
+	if reg.value.IsDefined() {
+		value = surp.NewDefined(reg.encoder(reg.value.Get()))
+	}
+
+	return value, reg.metadata
 }
 
 func NewStringRegister(name string, value surp.Optional[string], rw bool, metadata map[string]string, listener SetListener[string]) *Register[string] {
