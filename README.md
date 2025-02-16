@@ -1,4 +1,4 @@
-# SURP (Simple UDP Register Protocol) Implementation in Go
+# SURP Implementation in Go
 
 SURP (Simple UDP Register Protocol) is a lightweight M2M communication protocol designed for IoT devices. This repository contains the Go implementation of SURP.
 
