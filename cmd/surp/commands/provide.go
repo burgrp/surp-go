@@ -91,31 +91,4 @@ func runProvide(cmd *cobra.Command, args []string) error {
 
 	return nil
 
-	// registers, err := goreg.NewRegisters()
-	// if err != nil {
-	// 	return err
-	// }
-	// reader, writer := goreg.Provide(registers, name, json_serializer, json_deserializer, metadata)
-
-	// go func() {
-	// 	for {
-	// 		if !read_only {
-	// 			value := <-reader
-	// 			writer <- value
-	// 			fmt.Println(value)
-	// 		}
-	// 	}
-	// }()
-
-	// writer <- value
-
-	// scanner := bufio.NewScanner(os.Stdin)
-	// for scanner.Scan() {
-	// 	v := scanner.Text()
-	// 	writer <- v
-	// }
-	// if err := scanner.Err(); err != nil {
-	// 	return err
-	// }
-
 }
