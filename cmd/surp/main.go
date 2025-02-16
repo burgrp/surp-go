@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/burgrp-go/surp/cmd/surp/commands"
+	"github.com/burgrp/surp-go/cmd/surp/commands"
 	"github.com/spf13/cobra"
 )
 

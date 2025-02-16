@@ -1,6 +1,6 @@
 package consumer
 
-import surp "github.com/burgrp-go/surp/pkg"
+import surp "github.com/burgrp/surp-go/pkg"
 
 type SyncListener[T any] func(surp.Optional[T])
 

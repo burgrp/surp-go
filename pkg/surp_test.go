@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	surp "github.com/burgrp-go/surp/pkg"
-	"github.com/burgrp-go/surp/pkg/provider"
+	surp "github.com/burgrp/surp-go/pkg"
+	"github.com/burgrp/surp-go/pkg/provider"
 	"github.com/stretchr/testify/require"
 )
 

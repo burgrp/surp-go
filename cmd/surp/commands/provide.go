@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	surp "github.com/burgrp-go/surp/pkg"
-	"github.com/burgrp-go/surp/pkg/provider"
+	surp "github.com/burgrp/surp-go/pkg"
+	"github.com/burgrp/surp-go/pkg/provider"
 	"github.com/spf13/cobra"
 )
 

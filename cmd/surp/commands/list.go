@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	surp "github.com/burgrp-go/surp/pkg"
+	surp "github.com/burgrp/surp-go/pkg"
 	"github.com/spf13/cobra"
 )
 

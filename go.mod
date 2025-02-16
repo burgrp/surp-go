@@ -1,4 +1,4 @@
-module github.com/burgrp-go/surp
+module github.com/burgrp/surp-go
 
 go 1.22.4
 

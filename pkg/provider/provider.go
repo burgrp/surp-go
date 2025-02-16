@@ -3,7 +3,7 @@ package provider
 import (
 	"fmt"
 
-	surp "github.com/burgrp-go/surp/pkg"
+	surp "github.com/burgrp/surp-go/pkg"
 )
 
 type Register[T comparable] struct {

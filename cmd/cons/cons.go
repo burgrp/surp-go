@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	surp "github.com/burgrp-go/surp/pkg"
-	"github.com/burgrp-go/surp/pkg/consumer"
+	surp "github.com/burgrp/surp-go/pkg"
+	"github.com/burgrp/surp-go/pkg/consumer"
 )
 
 func main() {
