@@ -103,3 +103,14 @@ func NewBoolRegister(name string, value surp.Optional[bool], rw bool, metadata m
 func NewFloatRegister(name string, value surp.Optional[float64], rw bool, metadata map[string]string, listener SetListener[float64]) *Register[float64] {
 	return NewRegister[float64](name, value, surp.EncodeFloat, surp.DecodeFloat, "float", rw, metadata, listener)
 }
+
+func NewAnyRegister(name string, value surp.Optional[any], typ string, rw bool, metadata map[string]string, listener SetListener[any]) *Register[any] {
+
+	reg := NewRegister[any](name, value, func(value any) []byte {
+		return surp.EncodeGeneric(value, typ)
+	}, func(b []byte) (any, bool) {
+		return surp.DecodeGeneric(b, typ)
+	}, typ, rw, metadata, listener)
+
+	return reg
+}

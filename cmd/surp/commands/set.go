@@ -31,30 +31,37 @@ Values are specified as JSON expressions, e.g. true, false, 3.14, "hello world" 
 	return cmd
 }
 
-func parseString(value string, typ string) (any, error) {
+func parseString(value string, typ string) (surp.Optional[any], error) {
+
+	var undefined surp.Optional[any]
+
+	if value == "null" {
+		return undefined, nil
+	}
+
 	switch typ {
 	case "string":
-		return any(value), nil
+		return surp.NewDefined(any(value)), nil
 	case "int":
 		v, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return nil, err
+			return undefined, err
 		}
-		return any(v), nil
+		return surp.NewDefined(any(v)), nil
 	case "float":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return nil, err
+			return undefined, err
 		}
-		return any(v), nil
+		return surp.NewDefined(any(v)), nil
 	case "bool":
 		v, err := strconv.ParseBool(value)
 		if err != nil {
-			return nil, err
+			return undefined, err
 		}
-		return any(v), nil
+		return surp.NewDefined(any(v)), nil
 	default:
-		return nil, fmt.Errorf("unsupported type: %s", typ)
+		return undefined, fmt.Errorf("unsupported type: %s", typ)
 	}
 }
 
@@ -70,13 +77,9 @@ Wait:
 			if register.GetMetadata().IsDefined() {
 				typ := register.GetMetadata().Get()["type"]
 				if typ != "" {
-					des := surp.NewUndefined[any]()
-					if desired != "null" {
-						v, err := parseString(desired, typ)
-						if err != nil {
-							return err
-						}
-						des = surp.NewDefined(v)
+					des, err := parseString(desired, typ)
+					if err != nil {
+						return err
 					}
 
 					if actual == des {
