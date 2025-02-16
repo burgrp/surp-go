@@ -65,24 +65,7 @@ All messages share the same encoding. Sync message sets all fields. Set message 
 
 ## Library Usage
 
-To use the SURP library in your Go application, import the `surp` package and follow the examples below:
-
-```go
-import "github.com/burgrp/surp-go/pkg/surp"
-
-// Example usage for creating and joining a register group
-group, err := surp.JoinGroup("eth0", "exampleGroup")
-if err != nil {
-    log.Fatalf("Failed to join group: %v", err)
-}
-
-// Adding providers and consumers to the group
-group.AddProviders(provider1, provider2)
-group.AddConsumers(consumer1, consumer2)
-```
-
-## CLI
-The SURP CLI can be used to interact with the protocol from the command line.
+TODO
 
 ## Wireshark
 To analyze SURP protocol messages with Wireshark, set the WIRESHARK_PLUGIN_DIR environment variable to the wireshark directory in this repository and start Wireshark:
@@ -90,3 +73,197 @@ To analyze SURP protocol messages with Wireshark, set the WIRESHARK_PLUGIN_DIR e
 ```sh
 WIRESHARK_PLUGIN_DIR=$PWD/wireshark wireshark
 ```
+
+## CLI
+
+### Installation
+
+Download binary for your platform from the latest [release](https://github.com/burgrp/surp-go).
+
+### Compilation
+
+```sh
+go mod tidy
+go build -o surp cmd/surp/main.go
+```
+
+### Reference
+
+#### surp
+
+surp is a command line tool for working with registers over SURP protocol.
+
+##### Synopsis
+
+The surp command is a command line tool for working with registers over SURP protocol.
+It allows you to read, write and list registers.
+Furthermore it can provide a 'virtual' register which is convenient for debugging of consumers of the register.
+
+Two environment variables are required:
+- SURP_IF: The network interface to bind to
+- SURP_GROUP: The SURP group name to join
+
+For more information on registers over SURP, see: https://github.com/burgrp/surp-go .
+
+##### Options
+
+```
+  -h, --help   help for surp
+```
+
+##### SEE ALSO
+
+* [surp get](#surp-get)	 - Read a register
+* [surp list](#surp-list)	 - List all known registers
+* [surp provide](#surp-provide)	 - Provide a register
+* [surp set](#surp-set)	 - Write a register
+* [surp version](#surp-version)	 - Show version
+
+#### surp get
+
+Read a register
+
+##### Synopsis
+
+Reads the specified register.
+	With --stay flag, the command will remain connected and write any changes to stdout.
+
+```
+surp get <register> [flags]
+```
+
+##### Options
+
+```
+  -h, --help   help for get
+  -s, --stay   Stay connected and write changes to stdout
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
+#### surp help
+
+Help about any command
+
+##### Synopsis
+
+Help provides help for any command in the application.
+Simply type surp help [path to command] for full details.
+
+```
+surp help [command] [flags]
+```
+
+##### Options
+
+```
+  -h, --help   help for help
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
+#### surp list
+
+List all known registers
+
+##### Synopsis
+
+Lists all known registers.
+	With --stay flag, the command will remain connected and write any changes to stdout.
+	If registers are specified, only those will be listed.
+
+```
+surp list [<reg1> <reg2> ...] [flags]
+```
+
+##### Options
+
+```
+  -h, --help               help for list
+  -m, --meta               Do not print metadata
+  -s, --stay               Stay connected infinitely and write changes to stdout
+  -t, --timeout duration   Timeout for waiting for the registers (default 10s)
+  -v, --values             Do not print values
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
+#### surp provide
+
+Provide a register
+
+##### Synopsis
+
+Provides a register with the specified name, value and metadata.
+Subsequent values are read from stdin and are written to stdout.
+Default type is int, if not specified otherwise in metadata.
+
+```
+surp provide <name> <value> [meta-key:meta-value ...] [flags]
+```
+
+##### Options
+
+```
+  -h, --help        help for provide
+  -r, --read-only   Make the register read-only.
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
+#### surp set
+
+Write a register
+
+##### Synopsis
+
+Writes the specified register.
+With --stay flag, the command will remain connected, read values from stdin and write any changes to stdout.
+Values are specified as JSON expressions, e.g. true, false, 3.14, "hello world" or null.
+
+```
+surp set <register> <value> [flags]
+```
+
+##### Options
+
+```
+  -h, --help               help for set
+  -s, --stay               Stay connected, read values from stdin and write changes to stdout
+  -o, --timeout duration   Timeout for waiting for the register to be set (default 10s)
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
+#### surp version
+
+Show version
+
+##### Synopsis
+
+Shows version of reg command line tool.
+
+```
+surp version [flags]
+```
+
+##### Options
+
+```
+  -h, --help   help for version
+```
+
+##### SEE ALSO
+
+* [surp](#surp)	 - surp is a command line tool for working with registers over SURP protocol.
+
