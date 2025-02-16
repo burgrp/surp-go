@@ -41,7 +41,7 @@ func passNameFilter(name string, args []string) bool {
 
 func runList(cmd *cobra.Command, args []string) error {
 
-	env, err := GetEnvironment()
+	env, err := surp.GetEnvironment()
 	if err != nil {
 		return err
 	}

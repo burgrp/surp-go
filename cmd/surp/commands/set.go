@@ -98,7 +98,7 @@ Wait:
 
 func runSet(cmd *cobra.Command, args []string) error {
 
-	env, err := GetEnvironment()
+	env, err := surp.GetEnvironment()
 	if err != nil {
 		return err
 	}
