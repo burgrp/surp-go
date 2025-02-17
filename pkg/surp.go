@@ -46,7 +46,6 @@ Message Structure (Binary):
 		[K bytes] Key
 		[1 byte]  Value length (V)
 		[V bytes] Value
-	[2 bytes] Port for unicast operations (address to be determined from the packet)
 
 	All messages share the same encoding.
 	Sync message sets all fields.
@@ -111,10 +110,14 @@ type providerWrapper struct {
 }
 
 type RegisterGroup struct {
-	name          string
-	multicastPipe *UdpPipe
-	unicastPipe   *UdpPipe
-	rcvChannel    chan MessageAndAddr
+	name string
+
+	groupMulticastAddr   *net.UDPAddr
+	groupMulticastReader <-chan MessageAndAddr
+	unicastReader        <-chan MessageAndAddr
+	unicastWriter        chan<- MessageAndAddr
+
+	rcvChannel chan MessageAndAddr
 
 	providers      map[string]*providerWrapper
 	providersMutex sync.Mutex
@@ -142,17 +145,20 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 		consumers:  make(map[string][]*consumerWrapper),
 	}
 
-	pipe, err := NewMulticastPipe(in, groupName, group.rcvChannel)
+	group.groupMulticastAddr, err = stringToMulticastAddr(groupName)
 	if err != nil {
 		return nil, err
 	}
-	group.multicastPipe = pipe
 
-	pipe, err = NewUnicastPipe(in, group.rcvChannel)
+	group.groupMulticastReader, err = listenMulticast(in, group.groupMulticastAddr)
 	if err != nil {
 		return nil, err
 	}
-	group.unicastPipe = pipe
+
+	group.unicastReader, group.unicastWriter, err = listenUnicast(in)
+	if err != nil {
+		return nil, err
+	}
 
 	go group.readPipes()
 
@@ -209,30 +215,32 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 					Value:          value,
 				}
 				encoded := encodeMessage(message)
-				group.unicastPipe.sndChannel <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
+				group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: &net.UDPAddr{IP: wrapper.setIP, Port: int(wrapper.setPort)}}
 			}
 		})
 
-		group.multicastPipe.sndChannel <- MessageAndAddr{Message: encodeMessage(&Message{
-			SequenceNumber: group.nextSequenceNumber(),
-			Type:           MessageTypeGet,
-			Group:          group.name,
-			Name:           consumer.GetName(),
-		}), Addr: group.multicastPipe.addr}
+		group.unicastWriter <- MessageAndAddr{
+			Message: encodeMessage(&Message{
+				SequenceNumber: group.nextSequenceNumber(),
+				Type:           MessageTypeGet,
+				Group:          group.name,
+				Name:           consumer.GetName(),
+			}),
+			Addr: group.groupMulticastAddr}
 	}
 
 }
 
 func (group *RegisterGroup) Close() error {
-	err := group.multicastPipe.Close()
-	if err != nil {
-		return err
-	}
+	// err := group.multicastPipe.Close()
+	// if err != nil {
+	// 	return err
+	// }
 
-	err = group.multicastPipe.Close()
-	if err != nil {
-		return err
-	}
+	// err = group.multicastPipe.Close()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -260,7 +268,7 @@ func (group *RegisterGroup) readPipes() {
 			consumers := group.consumers[message.Name]
 			for _, wrapper := range consumers {
 				wrapper.setIP = m.Addr.IP
-				wrapper.setPort = message.Port
+				wrapper.setPort = uint16(m.Addr.Port)
 				wrapper.consumer.SetMetadata(message.Metadata)
 				group.syncConsumerValue(wrapper, message.Value)
 			}
@@ -314,22 +322,21 @@ func (group *RegisterGroup) nextSequenceNumber() uint16 {
 }
 
 func (group *RegisterGroup) syncLoop(providerWrapper *providerWrapper) {
-	port := group.unicastPipe.conn.LocalAddr().(*net.UDPAddr).Port
 	for {
 
 		regular := time.After(MinSyncPeriod + time.Duration(rand.Intn(int(MaxSyncPeriod-MinSyncPeriod))))
 
 		select {
 		case <-regular:
-			group.sendSyncMessage(providerWrapper.provider, port)
+			group.sendSyncMessage(providerWrapper.provider)
 		case <-providerWrapper.syncChannel:
-			group.sendSyncMessage(providerWrapper.provider, port)
+			group.sendSyncMessage(providerWrapper.provider)
 		}
 
 	}
 }
 
-func (group *RegisterGroup) sendSyncMessage(provider Provider, port int) {
+func (group *RegisterGroup) sendSyncMessage(provider Provider) {
 
 	value, metadata := provider.GetEncodedValue()
 
@@ -337,14 +344,13 @@ func (group *RegisterGroup) sendSyncMessage(provider Provider, port int) {
 		SequenceNumber: group.nextSequenceNumber(),
 		Type:           MessageTypeSync,
 		Group:          group.name,
-		Port:           uint16(port),
 		Name:           provider.GetName(),
 		Value:          value,
 		Metadata:       metadata,
 	}
 
 	data := encodeMessage(msg)
-	group.multicastPipe.sndChannel <- MessageAndAddr{Message: data, Addr: group.multicastPipe.addr}
+	group.unicastWriter <- MessageAndAddr{Message: data, Addr: group.groupMulticastAddr}
 }
 
 func (group *RegisterGroup) OnSync(listener func(*Message)) {

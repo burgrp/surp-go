@@ -12,7 +12,6 @@ local f_msg_type = ProtoField.uint8("surp.msg_type", "Message Type", base.HEX, m
 local f_seq = ProtoField.uint16("surp.seq", "Sequence Number", base.DEC)
 local f_group_len = ProtoField.uint8("surp.group_len", "Group Name Length", base.DEC)
 local f_group = ProtoField.string("surp.group", "Group Name", base.ASCII)
-local f_port = ProtoField.uint16("surp.port", "Port", base.DEC)
 local f_reg_name_len = ProtoField.uint8("surp.reg_name_len", "Register Name Length", base.DEC)
 local f_reg_name = ProtoField.string("surp.reg_name", "Register Name", base.ASCII)
 local f_val_len = ProtoField.uint16("surp.val_len", "Value Length", base.DEC)
@@ -23,7 +22,7 @@ local f_meta_key = ProtoField.string("surp.meta_key", "Metadata Key", base.ASCII
 local f_meta_val_len = ProtoField.uint8("surp.meta_val_len", "Metadata Value Length", base.DEC)
 local f_meta_val = ProtoField.string("surp.meta_val", "Metadata Value", base.ASCII)
 
-surp_proto.fields = {f_magic, f_msg_type, f_seq, f_group_len, f_group, f_port, f_reg_name_len, f_reg_name, f_val_len,
+surp_proto.fields = {f_magic, f_msg_type, f_seq, f_group_len, f_group, f_reg_name_len, f_reg_name, f_val_len,
                      f_val, f_meta_count, f_meta_key_len, f_meta_key, f_meta_val_len, f_meta_val}
 
 -- Main dissector function
@@ -167,11 +166,6 @@ function surp_proto.dissector(tvb, pinfo, tree)
                 end
                 info_str = info_str .. meta_str
 
-                if tvb:len() < offset + 2 then
-                    return
-                end
-                subtree:add(f_port, tvb(offset, 2))
-                offset = offset + 2
             end
         end
 

@@ -14,7 +14,6 @@ type Message struct {
 	Name           string
 	Value          Optional[[]byte]
 	Metadata       map[string]string
-	Port           uint16
 }
 
 func encodeMessage(msg *Message) []byte {
@@ -41,7 +40,6 @@ func encodeMessage(msg *Message) []byte {
 				buf.WriteByte(byte(len(v)))
 				buf.WriteString(v)
 			}
-			binary.Write(&buf, binary.BigEndian, msg.Port)
 		}
 	}
 	return buf.Bytes()
@@ -119,41 +117,37 @@ func decodeMessage(data []byte) (*Message, bool) {
 
 	msg := &Message{}
 
-	messageType, ok := readByte(&remaining)
+	var ok bool
+	msg.Type, ok = readByte(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.Type = messageType
 
-	if messageType != MessageTypeGet && messageType != MessageTypeSet && messageType != MessageTypeSync {
+	if msg.Type != MessageTypeGet && msg.Type != MessageTypeSet && msg.Type != MessageTypeSync {
 		return nil, false
 	}
 
-	sequenceNumber, ok := readUint16(&remaining)
+	msg.SequenceNumber, ok = readUint16(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.SequenceNumber = sequenceNumber
 
-	group, ok := readString(&remaining)
+	msg.Group, ok = readString(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.Group = group
 
-	name, ok := readString(&remaining)
+	msg.Name, ok = readString(&remaining)
 	if !ok {
 		return nil, false
 	}
-	msg.Name = name
 
 	if msg.Type == MessageTypeSync || msg.Type == MessageTypeSet {
 
-		value, ok := readValue(&remaining)
+		msg.Value, ok = readValue(&remaining)
 		if !ok {
 			return nil, false
 		}
-		msg.Value = value
 
 		if msg.Type == MessageTypeSync {
 
@@ -162,7 +156,7 @@ func decodeMessage(data []byte) (*Message, bool) {
 				return nil, false
 			}
 
-			metadata := make(map[string]string, metadataCount)
+			msg.Metadata = make(map[string]string, metadataCount)
 
 			for j := 0; j < int(metadataCount); j++ {
 
@@ -176,16 +170,8 @@ func decodeMessage(data []byte) (*Message, bool) {
 					return nil, false
 				}
 
-				metadata[key] = val
+				msg.Metadata[key] = val
 			}
-
-			msg.Metadata = metadata
-
-			port, ok := readUint16(&remaining)
-			if !ok {
-				return nil, false
-			}
-			msg.Port = port
 
 		}
 

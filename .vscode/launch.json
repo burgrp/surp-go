@@ -29,10 +29,6 @@
                 "abc",
                 "10"
             ],
-            "env": {
-                "SURP_IF": "wlp3s0",
-                "SURP_GROUP": "test"
-            },
             "console": "integratedTerminal"
         }
     ]
