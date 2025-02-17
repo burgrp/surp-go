@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"syscall"
-	"time"
 )
 
 const (
@@ -29,27 +28,27 @@ func stringToMulticastAddr(pipeName string) (*net.UDPAddr, error) {
 	return addr, nil
 }
 
-func listenMulticast(netInterface *net.Interface, addr *net.UDPAddr) (<-chan MessageAndAddr, error) {
+func listenMulticast(netInterface *net.Interface, addr *net.UDPAddr) (<-chan MessageAndAddr, func() error, error) {
 
 	conn, err := net.ListenMulticastUDP("udp6", netInterface, addr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	fd, err := conn.File()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer fd.Close()
 
 	err = syscall.SetsockoptInt(int(fd.Fd()), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = syscall.SetsockoptInt(int(fd.Fd()), syscall.IPPROTO_IPV6, syscall.IPV6_MULTICAST_LOOP, 1)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	rcvChannel := make(chan MessageAndAddr)
@@ -69,14 +68,14 @@ func listenMulticast(netInterface *net.Interface, addr *net.UDPAddr) (<-chan Mes
 		}
 	}()
 
-	return rcvChannel, nil
+	return rcvChannel, conn.Close, nil
 }
 
-func listenUnicast(netInterface *net.Interface) (<-chan MessageAndAddr, chan<- MessageAndAddr, error) {
+func listenUnicast(netInterface *net.Interface) (<-chan MessageAndAddr, chan<- MessageAndAddr, func() error, error) {
 
 	addrs, err := netInterface.Addrs()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	var ip net.IP
@@ -91,7 +90,7 @@ func listenUnicast(netInterface *net.Interface) (<-chan MessageAndAddr, chan<- M
 
 	conn, err := net.ListenUDP("udp6", &net.UDPAddr{IP: ip, Zone: netInterface.Name})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	rcvChannel := make(chan MessageAndAddr)
@@ -108,8 +107,8 @@ func listenUnicast(netInterface *net.Interface) (<-chan MessageAndAddr, chan<- M
 			buf := make([]byte, maxUdpMessageSize)
 			n, src, err := conn.ReadFromUDP(buf)
 			if err != nil {
-				time.Sleep(1 * time.Second)
-				continue
+				close(rcvChannel)
+				return
 			}
 			rcvChannel <- MessageAndAddr{
 				Message: buf[:n],
@@ -118,5 +117,5 @@ func listenUnicast(netInterface *net.Interface) (<-chan MessageAndAddr, chan<- M
 		}
 	}()
 
-	return rcvChannel, sndChannel, nil
+	return rcvChannel, sndChannel, conn.Close, nil
 }
