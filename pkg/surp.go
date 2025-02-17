@@ -114,8 +114,9 @@ type RegisterGroup struct {
 
 	groupMulticastAddr   *net.UDPAddr
 	groupMulticastReader <-chan MessageAndAddr
-	unicastReader        <-chan MessageAndAddr
-	unicastWriter        chan<- MessageAndAddr
+
+	unicastReader <-chan MessageAndAddr
+	unicastWriter chan<- MessageAndAddr
 
 	rcvChannel chan MessageAndAddr
 
@@ -219,14 +220,14 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			}
 		})
 
-		group.unicastWriter <- MessageAndAddr{
-			Message: encodeMessage(&Message{
-				SequenceNumber: group.nextSequenceNumber(),
-				Type:           MessageTypeGet,
-				Group:          group.name,
-				Name:           consumer.GetName(),
-			}),
-			Addr: group.groupMulticastAddr}
+		encoded := encodeMessage(&Message{
+			SequenceNumber: group.nextSequenceNumber(),
+			Type:           MessageTypeGet,
+			Group:          group.name,
+			Name:           consumer.GetName(),
+		})
+
+		group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: group.groupMulticastAddr}
 	}
 
 }
@@ -340,17 +341,16 @@ func (group *RegisterGroup) sendSyncMessage(provider Provider) {
 
 	value, metadata := provider.GetEncodedValue()
 
-	msg := &Message{
+	encoded := encodeMessage(&Message{
 		SequenceNumber: group.nextSequenceNumber(),
 		Type:           MessageTypeSync,
 		Group:          group.name,
 		Name:           provider.GetName(),
 		Value:          value,
 		Metadata:       metadata,
-	}
+	})
 
-	data := encodeMessage(msg)
-	group.unicastWriter <- MessageAndAddr{Message: data, Addr: group.groupMulticastAddr}
+	group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: group.groupMulticastAddr}
 }
 
 func (group *RegisterGroup) OnSync(listener func(*Message)) {
