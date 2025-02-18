@@ -122,8 +122,6 @@ type RegisterGroup struct {
 	unicastWriter chan<- MessageAndAddr
 	unicastClose  func() error
 
-	rcvChannel chan MessageAndAddr
-
 	providers      map[string]*providerWrapper
 	providersMutex sync.Mutex
 
@@ -144,10 +142,9 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 	}
 
 	group := &RegisterGroup{
-		name:       groupName,
-		rcvChannel: make(chan MessageAndAddr),
-		providers:  make(map[string]*providerWrapper),
-		consumers:  make(map[string][]*consumerWrapper),
+		name:      groupName,
+		providers: make(map[string]*providerWrapper),
+		consumers: make(map[string][]*consumerWrapper),
 	}
 
 	group.multicastAddr = stringToMulticastAddr(groupName)
@@ -162,7 +159,8 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 		return nil, err
 	}
 
-	go group.readPipes()
+	go group.readMessages(group.multicastReader)
+	go group.readMessages(group.unicastReader)
 
 	return group, nil
 }
@@ -255,8 +253,9 @@ func (group *RegisterGroup) Close() error {
 	return nil
 }
 
-func (group *RegisterGroup) readPipes() {
-	for m := range group.rcvChannel {
+func (group *RegisterGroup) readMessages(ch <-chan MessageAndAddr) {
+
+	for m := range ch {
 
 		if len(m.Message) < 4 || string(m.Message[:4]) != "SURP" {
 			continue

@@ -25,9 +25,9 @@
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
-                "provide",
+                "get",
                 "a",
-                "10"
+                "-s"
             ],
             "console": "integratedTerminal"
         }
