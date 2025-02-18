@@ -98,15 +98,17 @@ type Encoder[T any] func(T) []byte
 type Decoder[T any] func([]byte) (T, bool)
 
 type consumerWrapper struct {
-	consumer Consumer
-	timeout  *time.Timer
-	setIP    net.IP
-	setPort  uint16
+	consumer      Consumer
+	timeout       *time.Timer
+	setIP         net.IP
+	setPort       uint16
+	multicastAddr *net.UDPAddr
 }
 
 type providerWrapper struct {
-	provider    Provider
-	syncChannel chan struct{}
+	provider      Provider
+	syncChannel   chan struct{}
+	multicastAddr *net.UDPAddr
 }
 
 type RegisterGroup struct {
@@ -148,10 +150,7 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 		consumers:  make(map[string][]*consumerWrapper),
 	}
 
-	group.multicastAddr, err = stringToMulticastAddr(groupName)
-	if err != nil {
-		return nil, err
-	}
+	group.multicastAddr = stringToMulticastAddr(groupName)
 
 	group.multicastReader, group.multicastClose, err = listenMulticast(in, group.multicastAddr)
 	if err != nil {
@@ -172,13 +171,16 @@ func (group *RegisterGroup) AddProviders(providers ...Provider) {
 
 	for _, provider := range providers {
 
+		name := provider.GetName()
+
 		providerWrapper := &providerWrapper{
-			provider:    provider,
-			syncChannel: make(chan struct{}),
+			provider:      provider,
+			syncChannel:   make(chan struct{}),
+			multicastAddr: stringToMulticastAddr(group.name + ":" + name),
 		}
 
 		group.providersMutex.Lock()
-		group.providers[provider.GetName()] = providerWrapper
+		group.providers[name] = providerWrapper
 		group.providersMutex.Unlock()
 
 		provider.Attach(func() {
@@ -195,17 +197,20 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 
 	for _, consumer := range consumers {
 
+		name := consumer.GetName()
+
 		wrapper := &consumerWrapper{
-			consumer: consumer,
+			consumer:      consumer,
+			multicastAddr: stringToMulticastAddr(group.name + ":" + name),
 		}
 
-		wrappers := group.consumers[consumer.GetName()]
+		wrappers := group.consumers[name]
 		if wrappers == nil {
 			wrappers = []*consumerWrapper{wrapper}
 		} else {
 			wrappers = append(wrappers, wrapper)
 		}
-		group.consumers[consumer.GetName()] = wrappers
+		group.consumers[name] = wrappers
 
 		consumer.Attach(func(value Optional[[]byte]) {
 			port := wrapper.setPort
@@ -214,7 +219,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 					SequenceNumber: group.nextSequenceNumber(),
 					Type:           MessageTypeSet,
 					Group:          group.name,
-					Name:           wrapper.consumer.GetName(),
+					Name:           name,
 					Value:          value,
 				}
 				encoded := encodeMessage(message)
@@ -226,10 +231,11 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			SequenceNumber: group.nextSequenceNumber(),
 			Type:           MessageTypeGet,
 			Group:          group.name,
-			Name:           consumer.GetName(),
+			Name:           name,
 		})
 
 		group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: group.multicastAddr}
+		group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: wrapper.multicastAddr}
 	}
 
 }
@@ -332,28 +338,31 @@ func (group *RegisterGroup) syncLoop(providerWrapper *providerWrapper) {
 
 		select {
 		case <-regular:
-			group.sendSyncMessage(providerWrapper.provider)
+			group.sendSyncMessage(providerWrapper)
 		case <-providerWrapper.syncChannel:
-			group.sendSyncMessage(providerWrapper.provider)
+			group.sendSyncMessage(providerWrapper)
 		}
 
 	}
 }
 
-func (group *RegisterGroup) sendSyncMessage(provider Provider) {
+func (group *RegisterGroup) sendSyncMessage(providerWrapper *providerWrapper) {
 
-	value, metadata := provider.GetEncodedValue()
+	name := providerWrapper.provider.GetName()
+
+	value, metadata := providerWrapper.provider.GetEncodedValue()
 
 	encoded := encodeMessage(&Message{
 		SequenceNumber: group.nextSequenceNumber(),
 		Type:           MessageTypeSync,
 		Group:          group.name,
-		Name:           provider.GetName(),
+		Name:           name,
 		Value:          value,
 		Metadata:       metadata,
 	})
 
 	group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: group.multicastAddr}
+	group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: providerWrapper.multicastAddr}
 }
 
 func (group *RegisterGroup) OnSync(listener func(*Message)) {

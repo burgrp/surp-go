@@ -16,16 +16,14 @@ type MessageAndAddr struct {
 	Addr    *net.UDPAddr
 }
 
-func stringToMulticastAddr(pipeName string) (*net.UDPAddr, error) {
+func stringToMulticastAddr(pipeName string) *net.UDPAddr {
 	port := 1024 + int(CalculateHash(pipeName)&0xBBFF) // this gives us a port in the range 1024-49151
 	addrStr := fmt.Sprintf("[%s]:%d", ipv6Address, port)
 
-	addr, err := net.ResolveUDPAddr("udp6", addrStr)
-	if err != nil {
-		return nil, err
-	}
+	addr, _ := net.ResolveUDPAddr("udp6", addrStr)
+	// as long as the string is a valid IPv6 address, this should never fail
 
-	return addr, nil
+	return addr
 }
 
 func listenMulticast(netInterface *net.Interface, addr *net.UDPAddr) (<-chan MessageAndAddr, func() error, error) {

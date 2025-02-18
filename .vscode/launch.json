@@ -26,7 +26,7 @@
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
                 "provide",
-                "abc",
+                "a",
                 "10"
             ],
             "console": "integratedTerminal"
