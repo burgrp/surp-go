@@ -114,9 +114,11 @@ type providerWrapper struct {
 type RegisterGroup struct {
 	name string
 
-	multicastAddr   *net.UDPAddr
-	multicastReader <-chan MessageAndAddr
-	multicastClose  func() error
+	netInterface *net.Interface
+	catchAll     bool
+
+	multicastAddr  *net.UDPAddr
+	multicastClose func() error
 
 	unicastReader <-chan MessageAndAddr
 	unicastWriter chan<- MessageAndAddr
@@ -134,7 +136,7 @@ type RegisterGroup struct {
 	syncListener func(*Message)
 }
 
-func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
+func JoinGroup(interfaceName string, groupName string, catchAll bool) (*RegisterGroup, error) {
 
 	in, err := net.InterfaceByName(interfaceName)
 	if err != nil {
@@ -142,16 +144,25 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 	}
 
 	group := &RegisterGroup{
-		name:      groupName,
-		providers: make(map[string]*providerWrapper),
-		consumers: make(map[string][]*consumerWrapper),
+		name:         groupName,
+		catchAll:     catchAll,
+		netInterface: in,
+		providers:    make(map[string]*providerWrapper),
+		consumers:    make(map[string][]*consumerWrapper),
 	}
 
 	group.multicastAddr = stringToMulticastAddr(groupName)
 
-	group.multicastReader, group.multicastClose, err = listenMulticast(in, group.multicastAddr)
-	if err != nil {
-		return nil, err
+	if catchAll {
+
+		var multicastReader <-chan MessageAndAddr
+		multicastReader, group.multicastClose, err = listenMulticast(in, group.multicastAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		go group.readMessages(multicastReader)
+
 	}
 
 	group.unicastReader, group.unicastWriter, group.unicastClose, err = listenUnicast(in)
@@ -159,37 +170,59 @@ func JoinGroup(interfaceName string, groupName string) (*RegisterGroup, error) {
 		return nil, err
 	}
 
-	go group.readMessages(group.multicastReader)
 	go group.readMessages(group.unicastReader)
 
 	return group, nil
 }
 
-func (group *RegisterGroup) AddProviders(providers ...Provider) {
+func (group *RegisterGroup) AddProviders(providers ...Provider) error {
 
 	for _, provider := range providers {
 
 		name := provider.GetName()
 
-		providerWrapper := &providerWrapper{
+		wrapper := &providerWrapper{
 			provider:      provider,
 			syncChannel:   make(chan struct{}),
-			multicastAddr: stringToMulticastAddr(group.name + ":" + name),
+			multicastAddr: group.getFilteredMulticastAddr(name),
 		}
 
 		group.providersMutex.Lock()
-		group.providers[name] = providerWrapper
+		group.providers[name] = wrapper
 		group.providersMutex.Unlock()
 
 		provider.Attach(func() {
-			providerWrapper.syncChannel <- struct{}{}
+			wrapper.syncChannel <- struct{}{}
 		})
 
-		go group.syncLoop(providerWrapper)
+		go group.syncLoop(wrapper)
+
+		if !group.catchAll {
+			err := group.listenFilteredMulticast(wrapper.multicastAddr)
+			if err != nil {
+				return err
+			}
+		}
 	}
+
+	return nil
 }
 
-func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
+func (group *RegisterGroup) getFilteredMulticastAddr(name string) *net.UDPAddr {
+	return stringToMulticastAddr(group.name + ":" + name)
+}
+
+func (group *RegisterGroup) listenFilteredMulticast(addr *net.UDPAddr) error {
+	multicastReader, _, err := listenMulticast(group.netInterface, addr)
+	if err != nil {
+		return err
+	}
+
+	go group.readMessages(multicastReader)
+	return nil
+}
+
+func (group *RegisterGroup) AddConsumers(consumers ...Consumer) error {
 	group.consumersMutex.Lock()
 	defer group.consumersMutex.Unlock()
 
@@ -199,7 +232,7 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 
 		wrapper := &consumerWrapper{
 			consumer:      consumer,
-			multicastAddr: stringToMulticastAddr(group.name + ":" + name),
+			multicastAddr: group.getFilteredMulticastAddr(name),
 		}
 
 		wrappers := group.consumers[name]
@@ -232,10 +265,18 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) {
 			Name:           name,
 		})
 
+		if !group.catchAll {
+			err := group.listenFilteredMulticast(wrapper.multicastAddr)
+			if err != nil {
+				return err
+			}
+		}
+
 		group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: group.multicastAddr}
 		group.unicastWriter <- MessageAndAddr{Message: encoded, Addr: wrapper.multicastAddr}
 	}
 
+	return nil
 }
 
 func (group *RegisterGroup) Close() error {

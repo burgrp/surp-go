@@ -114,7 +114,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return error
 	}
 
-	group, err := surp.JoinGroup(env.Interface, env.Group)
+	group, err := surp.JoinGroup(env.Interface, env.Group, false)
 	if err != nil {
 		return err
 	}

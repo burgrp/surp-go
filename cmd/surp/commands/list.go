@@ -66,7 +66,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	group, err := surp.JoinGroup(env.Interface, env.Group)
+	group, err := surp.JoinGroup(env.Interface, env.Group, true)
 	if err != nil {
 		return err
 	}

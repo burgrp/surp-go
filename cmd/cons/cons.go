@@ -19,7 +19,7 @@ func main() {
 		println(r2.GetName(), ":", value.String())
 	})
 
-	regGroup, err := surp.JoinGroup("wlp3s0", "test")
+	regGroup, err := surp.JoinGroup("wlp3s0", "test", false)
 	if err != nil {
 		panic(err)
 	}

@@ -13,13 +13,14 @@ func TestHelloName(t *testing.T) {
 
 	testReg := provider.NewStringRegister("test", surp.NewDefined("Bazar!"), true, nil, nil)
 
-	providerGroup, err := surp.JoinGroup("wlp3s0", "test")
+	providerGroup, err := surp.JoinGroup("wlp3s0", "test", false)
 	require.NoError(t, err)
 	require.NotNil(t, providerGroup)
 
 	defer providerGroup.Close()
 
-	providerGroup.AddProviders(testReg)
+	err = providerGroup.AddProviders(testReg)
+	require.NoError(t, err)
 
 	time.Sleep(1 * time.Second)
 

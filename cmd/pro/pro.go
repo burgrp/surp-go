@@ -17,14 +17,17 @@ func main() {
 		r2.SyncValue(v)
 	})
 
-	regGroup, err := surp.JoinGroup("wlp3s0", "test")
+	regGroup, err := surp.JoinGroup("wlp3s0", "test", false)
 	if err != nil {
 		panic(err)
 	}
 
 	defer regGroup.Close()
 
-	regGroup.AddProviders(r1, r2)
+	err = regGroup.AddProviders(r1, r2)
+	if err != nil {
+		panic(err)
+	}
 
 	for {
 		counter := r2.GetValue()

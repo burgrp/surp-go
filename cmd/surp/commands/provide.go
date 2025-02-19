@@ -58,7 +58,7 @@ func runProvide(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	group, err := surp.JoinGroup(env.Interface, env.Group)
+	group, err := surp.JoinGroup(env.Interface, env.Group, false)
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,10 @@ func runProvide(cmd *cobra.Command, args []string) error {
 		fmt.Println(value)
 	})
 
-	group.AddProviders(pro)
+	err = group.AddProviders(pro)
+	if err != nil {
+		return err
+	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
