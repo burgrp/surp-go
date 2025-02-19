@@ -64,7 +64,6 @@ See SURP specification for full protocol details.
 package surp
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
 	"sync"
@@ -346,8 +345,6 @@ func (group *RegisterGroup) readMessages(ch <-chan MessageAndAddr) {
 				providerWrapper.syncChannel <- struct{}{}
 			}
 
-		default:
-			fmt.Println("Received unknown message type")
 		}
 	}
 }
