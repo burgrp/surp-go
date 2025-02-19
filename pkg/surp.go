@@ -279,13 +279,13 @@ func (group *RegisterGroup) AddConsumers(consumers ...Consumer) error {
 }
 
 func (group *RegisterGroup) Close() error {
-
-	err := group.multicastClose()
-	if err != nil {
-		return err
+	if group.multicastClose != nil {
+		if err := group.multicastClose(); err != nil {
+			return err
+		}
 	}
 
-	err = group.unicastClose()
+	err := group.unicastClose()
 	if err != nil {
 		return err
 	}
