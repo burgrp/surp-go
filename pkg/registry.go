@@ -97,7 +97,7 @@ func (r *Registry) Get(name string) (*Register, bool) {
 
 // Close stops the TTL reaper and shuts down the registry.
 func (r *Registry) Start(ctx context.Context, wg *sync.WaitGroup) {
-	r.logger.Info("Registry started")
+	r.logger.Debug("Registry started")
 	wg.Add(1)
 	go func() {
 	loop:
@@ -110,7 +110,7 @@ func (r *Registry) Start(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}
 		r.ticker.Stop()
-		r.logger.Info("Registry stopped")
+		r.logger.Debug("Registry stopped")
 		wg.Done()
 	}()
 }

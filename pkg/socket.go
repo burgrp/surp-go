@@ -51,7 +51,7 @@ func NewSocket(listenAddr string, logger *slog.Logger) (*Socket, error) {
 func (s *Socket) Start(ctx context.Context, wg *sync.WaitGroup) {
 	out := make(chan Message)
 	s.ReceivedMessages = out
-	s.logger.Info("Socket started")
+	s.logger.Debug("Socket started")
 
 	go func() {
 		for {
@@ -90,7 +90,7 @@ func (s *Socket) Start(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		<-ctx.Done()
-		s.logger.Info("Socket stopped")
+		s.logger.Debug("Socket stopped")
 		close(out)
 		s.conn.Close()
 		wg.Done()
@@ -115,7 +115,7 @@ func (s *Socket) WriteMessage(addr *net.UDPAddr, msgType MsgType, body []byte) e
 
 // Close closes the underlying UDP connection.
 func (s *Socket) Close() error {
-	s.logger.Info("Socket closed")
+	s.logger.Debug("Closing socket")
 	return s.conn.Close()
 }
 

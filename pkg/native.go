@@ -38,7 +38,7 @@ func NewNative(socket *Socket, registry *Registry, logger *slog.Logger) *Native 
 
 // Run begins processing messages from the socket.
 func (n *Native) Start(ctx context.Context, wg *sync.WaitGroup) {
-	n.logger.Info("Native bridge started")
+	n.logger.Debug("Native bridge started")
 	wg.Add(1)
 	go func() {
 	loop:
@@ -82,7 +82,7 @@ func (n *Native) Start(ctx context.Context, wg *sync.WaitGroup) {
 				}
 			}
 		}
-		n.logger.Info("Native bridge stopped")
+		n.logger.Debug("Native bridge stopped")
 		wg.Done()
 	}()
 }

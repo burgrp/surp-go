@@ -53,6 +53,8 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 	registry.Start(ctx, &wg)
 	native.Start(ctx, &wg)
 
+	logger.Info("SURP registry started", "address", address)
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
