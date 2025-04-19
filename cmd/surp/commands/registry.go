@@ -1,12 +1,7 @@
 package commands
 
 import (
-	"context"
 	"log/slog"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
 
 	surp "github.com/burgrp/surp-go/pkg"
 	reg "github.com/burgrp/surp-go/pkg/registry"
@@ -43,25 +38,11 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 	}
 
 	registry := reg.NewRegistry(logger)
-
 	native := reg.NewNative(socket, registry, logger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	var wg sync.WaitGroup
-
-	socket.Start(ctx, &wg)
-	registry.Start(ctx, &wg)
-	native.Start(ctx, &wg)
 
 	logger.Info("SURP registry started", "address", address)
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
-	logger.Info("Shutting down...")
-	cancel()
-	wg.Wait()
+	surp.RunWorkers(socket, registry, native)
 
 	return nil
 }
