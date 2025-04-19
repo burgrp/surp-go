@@ -1,181 +1,80 @@
 package surp
 
-import (
-	"bytes"
-	"encoding/binary"
+// Message type identifiers
+type MsgType uint8
+
+const (
+	ProtocolVersion1 uint8 = 1
 )
 
-const magicString = "SURP"
+const (
+	MsgTypeIS  MsgType = 0x01
+	MsgTypeSET MsgType = 0x02
+	MsgTypeGET MsgType = 0x03
+)
 
-type Message struct {
-	SequenceNumber uint16
-	Type           byte
-	Group          string
-	Name           string
-	Value          Optional[[]byte]
-	Metadata       map[string]string
+// Value types
+type ValueType uint8
+
+const (
+	ValueUndefined   ValueType = 0x00
+	ValueBool        ValueType = 0x01
+	ValueU8          ValueType = 0x02
+	ValueS8          ValueType = 0x03
+	ValueU16         ValueType = 0x04
+	ValueS16         ValueType = 0x05
+	ValueU32         ValueType = 0x06
+	ValueS32         ValueType = 0x07
+	ValueU64         ValueType = 0x08
+	ValueS64         ValueType = 0x09
+	ValueDouble      ValueType = 0x0A
+	ValueShortString ValueType = 0x0B
+	ValueLongString  ValueType = 0x0C
+)
+
+// Metadata keys
+type MetadataKey uint8
+
+const (
+	MetaType        MetadataKey = 0x01
+	MetaRW          MetadataKey = 0x02
+	MetaMin         MetadataKey = 0x03
+	MetaMax         MetadataKey = 0x04
+	MetaUnit        MetadataKey = 0x05
+	MetaDescription MetadataKey = 0x06
+)
+
+// Metadata entry structure
+type MetadataEntry struct {
+	Key       MetadataKey
+	ValueType ValueType
+	Value     any
 }
 
-func encodeMessage(msg *Message) []byte {
-	var buf bytes.Buffer
-
-	buf.WriteString(magicString)
-	buf.WriteByte(msg.Type)
-	binary.Write(&buf, binary.BigEndian, msg.SequenceNumber)
-	buf.WriteByte(byte(len(msg.Group)))
-	buf.WriteString(msg.Group)
-	buf.WriteByte(byte(len(msg.Name)))
-	buf.WriteString(msg.Name)
-
-	if msg.Type == MessageTypeSync || msg.Type == MessageTypeSet {
-
-		writeValue(msg.Value, &buf)
-
-		if msg.Type == MessageTypeSync {
-
-			buf.WriteByte(byte(len(msg.Metadata)))
-			for k, v := range msg.Metadata {
-				buf.WriteByte(byte(len(k)))
-				buf.WriteString(k)
-				buf.WriteByte(byte(len(v)))
-				buf.WriteString(v)
-			}
-		}
-	}
-	return buf.Bytes()
+// Common message header
+type MessageHeader struct {
+	Version uint8
+	MsgType MsgType
 }
 
-func writeValue(value Optional[[]byte], buf *bytes.Buffer) {
-	var length int
-	var data []byte
-
-	if value.IsDefined() {
-		data = value.Get()
-		length = len(data)
-	} else {
-		length = -1
-	}
-	binary.Write(buf, binary.BigEndian, uint16(length))
-	buf.Write(data)
+// MessageIS represents the "Inform State" message
+type MessageIS struct {
+	TTL       uint16
+	Name      string
+	ValueType ValueType
+	Value     any
+	Metadata  []MetadataEntry
 }
 
-func readByte(remaining *[]byte) (byte, bool) {
-	if len(*remaining) < 1 {
-		return 0, false
-	}
-	result := (*remaining)[0]
-	*remaining = (*remaining)[1:]
-	return result, true
+// MessageSET represents the "Set Value" message
+type MessageSET struct {
+	Name      string
+	ValueType ValueType
+	Value     any
 }
 
-func readUint16(remaining *[]byte) (uint16, bool) {
-	if len(*remaining) < 2 {
-		return 0, false
-	}
-	result := binary.BigEndian.Uint16((*remaining)[:2])
-	*remaining = (*remaining)[2:]
-	return result, true
-}
-
-func readString(remaining *[]byte) (string, bool) {
-	if len(*remaining) < 1 {
-		return "", false
-	}
-	length := int((*remaining)[0])
-	if len(*remaining) < length+1 {
-		return "", false
-	}
-	result := string((*remaining)[1 : length+1])
-	*remaining = (*remaining)[length+1:]
-	return result, true
-}
-
-func readValue(remaining *[]byte) (Optional[[]byte], bool) {
-
-	value := NewUndefined[[]byte]()
-
-	valueLen, ok := readUint16(remaining)
-	if !ok {
-		return value, false
-	}
-
-	if valueLen == 0xFFFF {
-		return value, true
-	}
-
-	if len(*remaining) < int(valueLen) {
-		return value, false
-	}
-	value = NewDefined((*remaining)[:valueLen])
-	*remaining = (*remaining)[valueLen:]
-	return value, true
-}
-
-func decodeMessage(data []byte) (*Message, bool) {
-
-	remaining := data[:]
-
-	msg := &Message{}
-
-	var ok bool
-	msg.Type, ok = readByte(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	if msg.Type != MessageTypeGet && msg.Type != MessageTypeSet && msg.Type != MessageTypeSync {
-		return nil, false
-	}
-
-	msg.SequenceNumber, ok = readUint16(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	msg.Group, ok = readString(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	msg.Name, ok = readString(&remaining)
-	if !ok {
-		return nil, false
-	}
-
-	if msg.Type == MessageTypeSync || msg.Type == MessageTypeSet {
-
-		msg.Value, ok = readValue(&remaining)
-		if !ok {
-			return nil, false
-		}
-
-		if msg.Type == MessageTypeSync {
-
-			metadataCount, ok := readByte(&remaining)
-			if !ok {
-				return nil, false
-			}
-
-			msg.Metadata = make(map[string]string, metadataCount)
-
-			for j := 0; j < int(metadataCount); j++ {
-
-				key, ok := readString(&remaining)
-				if !ok {
-					return nil, false
-				}
-
-				val, ok := readString(&remaining)
-				if !ok {
-					return nil, false
-				}
-
-				msg.Metadata[key] = val
-			}
-
-		}
-
-	}
-
-	return msg, true
+// MessageGET represents the "Get/Subscribe" message
+type MessageGET struct {
+	TTL  uint16
+	Name string
 }

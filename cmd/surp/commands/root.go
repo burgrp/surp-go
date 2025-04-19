@@ -19,10 +19,11 @@ For more information on registers over SURP, see: https://github.com/burgrp/surp
 	}
 
 	cmd.AddCommand(
-		GetGetCommand(),
-		GetSetCommand(),
-		GetListCommand(),
-		GetProvideCommand(),
+		// GetGetCommand(),
+		// GetSetCommand(),
+		// GetListCommand(),
+		// GetProvideCommand(),
+		GetRegistryCommand(),
 		GetVersionCommand(),
 	)
 
