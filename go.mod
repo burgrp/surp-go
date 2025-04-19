@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/phsym/console-slog v0.3.1
 	github.com/spf13/cobra v1.9.0
 	github.com/stretchr/testify v1.10.0
 )

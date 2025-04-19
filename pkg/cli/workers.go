@@ -1,4 +1,4 @@
-package surp
+package cli
 
 import (
 	"context"
@@ -31,5 +31,4 @@ func RunWorkers(workers ...Worker) {
 	<-sigs
 	cancel()
 	wg.Wait()
-
 }
