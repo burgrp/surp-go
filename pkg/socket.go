@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"slices"
-	"sync"
 	"time"
 )
 
@@ -48,7 +47,7 @@ func NewSocket(listenAddr string, logger *slog.Logger) (*Socket, error) {
 }
 
 // StartReceiving starts reading messages and sends them to the returned channel.
-func (s *Socket) Start(ctx context.Context, wg *sync.WaitGroup) {
+func (s *Socket) Run(ctx context.Context) {
 	out := make(chan Message)
 	s.ReceivedMessages = out
 	s.logger.Debug("Socket started")
@@ -87,14 +86,10 @@ func (s *Socket) Start(ctx context.Context, wg *sync.WaitGroup) {
 		}
 	}()
 
-	wg.Add(1)
-	go func() {
-		<-ctx.Done()
-		s.logger.Debug("Socket stopped")
-		close(out)
-		s.conn.Close()
-		wg.Done()
-	}()
+	<-ctx.Done()
+	close(out)
+	s.conn.Close()
+	s.logger.Debug("Socket stopped")
 }
 
 // WriteMessage encodes and sends a SURP message to the target address.

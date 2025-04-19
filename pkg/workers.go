@@ -9,7 +9,7 @@ import (
 )
 
 type Worker interface {
-	Start(ctx context.Context, wg *sync.WaitGroup)
+	Run(ctx context.Context)
 }
 
 func RunWorkers(workers ...Worker) {
@@ -19,7 +19,11 @@ func RunWorkers(workers ...Worker) {
 	var wg sync.WaitGroup
 
 	for _, worker := range workers {
-		worker.Start(ctx, &wg)
+		wg.Add(1)
+		go func() {
+			worker.Run(ctx)
+			wg.Done()
+		}()
 	}
 
 	sigs := make(chan os.Signal, 1)

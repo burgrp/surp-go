@@ -39,54 +39,50 @@ func NewNative(socket *surp.Socket, registry *Registry, logger *slog.Logger) *Na
 }
 
 // Run begins processing messages from the socket.
-func (n *Native) Start(ctx context.Context, wg *sync.WaitGroup) {
+func (n *Native) Run(ctx context.Context) {
 	n.logger.Debug("Native bridge started")
-	wg.Add(1)
-	go func() {
-	loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break loop
-			case msg := <-n.socket.ReceivedMessages:
-				if msg.Version != surp.ProtocolVersion1 {
-					n.logger.Debug("Invalid protocol version", "version", msg.Version)
-					continue
-				}
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			break loop
+		case msg := <-n.socket.ReceivedMessages:
+			if msg.Version != surp.ProtocolVersion1 {
+				n.logger.Debug("Invalid protocol version", "version", msg.Version)
+				continue
+			}
 
-				switch msg.Type {
-				case surp.MsgTypeIS:
-					msgIS, err := surp.DecodeMessageIS(msg.Payload)
-					if err == nil {
-						n.logger.Debug("Received IS", "from", msg.Sender.String(), "name", msgIS.Name)
-						n.registry.UpdateFromIS(msgIS, msg.Sender)
-					} else {
-						n.logger.Debug("Failed to decode IS", "err", err)
-					}
-				case surp.MsgTypeGET:
-					msgGET, err := surp.DecodeMessageGET(msg.Payload)
-					if err == nil {
-						n.logger.Debug("Received GET", "from", msg.Sender.String(), "name", msgGET.Name, "ttl", msgGET.TTL)
-						n.handleGET(msgGET, msg.Sender)
-					} else {
-						n.logger.Debug("Failed to decode GET", "err", err)
-					}
-				case surp.MsgTypeSET:
-					msgSET, err := surp.DecodeMessageSET(msg.Payload)
-					if err == nil {
-						n.logger.Debug("Received SET", "name", msgSET.Name)
-						n.handleSET(msgSET)
-					} else {
-						n.logger.Debug("Failed to decode SET", "err", err)
-					}
-				default:
-					n.logger.Debug("Unknown message type", "msgType", msg.Type)
+			switch msg.Type {
+			case surp.MsgTypeIS:
+				msgIS, err := surp.DecodeMessageIS(msg.Payload)
+				if err == nil {
+					n.logger.Debug("Received IS", "from", msg.Sender.String(), "name", msgIS.Name)
+					n.registry.UpdateFromIS(msgIS, msg.Sender)
+				} else {
+					n.logger.Debug("Failed to decode IS", "err", err)
 				}
+			case surp.MsgTypeGET:
+				msgGET, err := surp.DecodeMessageGET(msg.Payload)
+				if err == nil {
+					n.logger.Debug("Received GET", "from", msg.Sender.String(), "name", msgGET.Name, "ttl", msgGET.TTL)
+					n.handleGET(msgGET, msg.Sender)
+				} else {
+					n.logger.Debug("Failed to decode GET", "err", err)
+				}
+			case surp.MsgTypeSET:
+				msgSET, err := surp.DecodeMessageSET(msg.Payload)
+				if err == nil {
+					n.logger.Debug("Received SET", "name", msgSET.Name)
+					n.handleSET(msgSET)
+				} else {
+					n.logger.Debug("Failed to decode SET", "err", err)
+				}
+			default:
+				n.logger.Debug("Unknown message type", "msgType", msg.Type)
 			}
 		}
-		n.logger.Debug("Native bridge stopped")
-		wg.Done()
-	}()
+	}
+	n.logger.Debug("Native bridge stopped")
 }
 
 // OnRegisterUpdate is called by the Registry when a register is updated.
