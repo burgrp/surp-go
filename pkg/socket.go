@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -47,7 +48,7 @@ func NewSocket(listenAddr string, logger *slog.Logger) (*Socket, error) {
 }
 
 // StartReceiving starts reading messages and sends them to the returned channel.
-func (s *Socket) Start(ctx context.Context) {
+func (s *Socket) Start(ctx context.Context, wg *sync.WaitGroup) {
 	out := make(chan Message)
 	s.ReceivedMessages = out
 	s.logger.Info("Socket started")
@@ -58,7 +59,7 @@ func (s *Socket) Start(ctx context.Context) {
 			if err != nil {
 				if err == net.ErrClosed {
 					s.logger.Debug("Socket closed")
-					return
+					break
 				}
 				s.logger.Debug("Socket read error", "err", err)
 				continue
@@ -86,11 +87,13 @@ func (s *Socket) Start(ctx context.Context) {
 		}
 	}()
 
+	wg.Add(1)
 	go func() {
 		<-ctx.Done()
 		s.logger.Info("Socket stopped")
 		close(out)
 		s.conn.Close()
+		wg.Done()
 	}()
 }
 

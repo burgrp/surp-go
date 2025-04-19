@@ -37,14 +37,15 @@ func NewNative(socket *Socket, registry *Registry, logger *slog.Logger) *Native 
 }
 
 // Run begins processing messages from the socket.
-func (n *Native) Start(ctx context.Context) {
+func (n *Native) Start(ctx context.Context, wg *sync.WaitGroup) {
 	n.logger.Info("Native bridge started")
+	wg.Add(1)
 	go func() {
+	loop:
 		for {
 			select {
 			case <-ctx.Done():
-				n.logger.Info("Native bridge stopped")
-				return
+				break loop
 			case msg := <-n.socket.ReceivedMessages:
 				if msg.Version != ProtocolVersion1 {
 					n.logger.Debug("Invalid protocol version", "version", msg.Version)
@@ -81,7 +82,8 @@ func (n *Native) Start(ctx context.Context) {
 				}
 			}
 		}
-
+		n.logger.Info("Native bridge stopped")
+		wg.Done()
 	}()
 }
 

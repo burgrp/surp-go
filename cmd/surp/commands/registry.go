@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	surp "github.com/burgrp/surp-go/pkg"
 	"github.com/spf13/cobra"
@@ -47,17 +47,18 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	socket.Start(ctx)
-	registry.Start(ctx)
-	native.Start(ctx)
+	var wg sync.WaitGroup
+
+	socket.Start(ctx, &wg)
+	registry.Start(ctx, &wg)
+	native.Start(ctx, &wg)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 	logger.Info("Shutting down...")
 	cancel()
-
-	time.Sleep(time.Second * 60)
+	wg.Wait()
 
 	return nil
 }
