@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	surp "github.com/burgrp/surp-go/pkg"
+	reg "github.com/burgrp/surp-go/pkg/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +42,9 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	registry := surp.NewRegistry(logger)
+	registry := reg.NewRegistry(logger)
 
-	native := surp.NewNative(socket, registry, logger)
+	native := reg.NewNative(socket, registry, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

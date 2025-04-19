@@ -1,4 +1,4 @@
-package surp
+package registry
 
 import (
 	"context"
@@ -7,14 +7,16 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	surp "github.com/burgrp/surp-go/pkg"
 )
 
 // Register represents the state of a single SURP register.
 type Register struct {
 	Name      string
-	ValueType ValueType
+	ValueType surp.ValueType
 	Value     any
-	Metadata  []MetadataEntry
+	Metadata  []surp.MetadataEntry
 	TTL       uint16
 	UpdatedAt time.Time
 	Source    *net.UDPAddr
@@ -54,7 +56,7 @@ func (r *Registry) AddListener(l Listener) {
 }
 
 // UpdateFromIS inserts or updates a register based on an IS message.
-func (r *Registry) UpdateFromIS(msg *MessageIS, source *net.UDPAddr) {
+func (r *Registry) UpdateFromIS(msg *surp.MessageIS, source *net.UDPAddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
