@@ -27,7 +27,7 @@ For more information on registers over SURP, see: https://github.com/burgrp/surp
 		GetVersionCommand(),
 	)
 
-	cmd.PersistentFlags().StringP("log", "l", "info", "Log level (debug, info, warn, error, fatal, panic)")
+	cmd.PersistentFlags().StringP("log", "l", "info", "Log level (debug, info, warn, error)")
 
 	return cmd
 }
