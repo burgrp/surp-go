@@ -1,14 +1,9 @@
 package commands
 
 import (
-	"fmt"
-	"log/slog"
-	"os"
-
 	surp "github.com/burgrp/surp-go/pkg"
 	"github.com/burgrp/surp-go/pkg/cli"
 	reg "github.com/burgrp/surp-go/pkg/registry"
-	"github.com/phsym/console-slog"
 	"github.com/spf13/cobra"
 )
 
@@ -27,33 +22,6 @@ func GetRegistryCommand() *cobra.Command {
 	return cmd
 }
 
-func NewLogger(cmd *cobra.Command) (*slog.Logger, error) {
-
-	logLevel, err := cmd.Flags().GetString("log")
-	if err != nil {
-		return nil, err
-	}
-
-	var level slog.Level
-	switch logLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		return nil, fmt.Errorf("invalid log level: %s", logLevel)
-	}
-
-	logger := slog.New(
-		console.NewHandler(os.Stderr, &console.HandlerOptions{Level: level}),
-	)
-	return logger, nil
-}
-
 func runRegistry(cmd *cobra.Command, args []string) error {
 
 	address, err := cmd.Flags().GetString("address")
@@ -61,7 +29,7 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	logger, err := NewLogger(cmd)
+	logger, err := cli.NewLogger(cmd)
 	if err != nil {
 		return err
 	}
