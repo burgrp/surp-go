@@ -12,6 +12,8 @@
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
                 "registry",
+                "-l",
+                "debug",
             ],
             "console": "integratedTerminal"
         }

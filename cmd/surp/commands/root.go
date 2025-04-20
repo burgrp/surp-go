@@ -22,7 +22,7 @@ For more information on registers over SURP, see: https://github.com/burgrp/surp
 		// GetGetCommand(),
 		// GetSetCommand(),
 		// GetListCommand(),
-		// GetProvideCommand(),
+		GetProvideCommand(),
 		GetRegistryCommand(),
 		GetVersionCommand(),
 	)

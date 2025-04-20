@@ -4,8 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"slices"
-	"time"
+	"sync"
 )
 
 // Message represents a parsed SURP message.
@@ -14,15 +13,25 @@ type Message struct {
 	Type    MsgType
 	Payload []byte
 	Sender  *net.UDPAddr
-	Err     error
 }
 
 // Socket handles sending and receiving SURP messages via UDP.
 type Socket struct {
-	conn             *net.UDPConn
-	readBuf          []byte
-	logger           *slog.Logger
-	ReceivedMessages chan Message
+	conn        *net.UDPConn
+	readBuf     []byte
+	logger      *slog.Logger
+	listeners   []MessageListener
+	listenersMu sync.RWMutex
+}
+
+// Socket calls these methods synchronously when a message is received.
+// It is the responsibility of the listener to not block for too long.
+// All errors should be handled within the listener.
+// The listener should not modify the message.
+type MessageListener interface {
+	OnMessageIS(msg *MessageIS, sender *net.UDPAddr)
+	OnMessageGET(msg *MessageGET, sender *net.UDPAddr)
+	OnMessageSET(msg *MessageSET, sender *net.UDPAddr)
 }
 
 // NewSocket creates and binds a UDP socket to the given address.
@@ -40,28 +49,29 @@ func NewSocket(listenAddr string, logger *slog.Logger) (*Socket, error) {
 	logger.Debug("Socket bound", "addr", listenAddr)
 
 	return &Socket{
-		conn:    conn,
-		readBuf: make([]byte, 1472), // max UDP packet size
-		logger:  logger,
+		conn:      conn,
+		readBuf:   make([]byte, 1472), // max UDP packet size
+		logger:    logger,
+		listeners: []MessageListener{},
 	}, nil
 }
 
 // StartReceiving starts reading messages and sends them to the returned channel.
 func (s *Socket) Run(ctx context.Context) {
-	out := make(chan Message)
-	s.ReceivedMessages = out
 	s.logger.Debug("Socket started")
 
 	go func() {
 		for {
 			n, sender, err := s.conn.ReadFromUDP(s.readBuf)
 			if err != nil {
-				if err == net.ErrClosed {
-					s.logger.Debug("Socket closed")
-					break
-				}
+				// if err == net.ErrClosed {
+				// 	s.logger.Debug("Socket closed")
+				// 	break
+				// }
+				// s.logger.Debug("Socket read error", "err", err)
+				// continue
 				s.logger.Debug("Socket read error", "err", err)
-				continue
+				break
 			}
 			if n < 2 {
 				s.logger.Debug("Discarding short packet", "bytes", n, "from", sender.String())
@@ -74,20 +84,45 @@ func (s *Socket) Run(ctx context.Context) {
 				continue
 			}
 
-			payload := slices.Clone(s.readBuf[2:n])
+			if version != ProtocolVersion1 {
+				s.logger.Debug("Invalid protocol version", "version", version)
+				continue
+			}
 
-			out <- Message{
-				Version: version,
-				Type:    msgType,
-				Payload: payload,
-				Sender:  sender,
-				Err:     err,
+			payload := s.readBuf[2:n]
+
+			switch msgType {
+			case MsgTypeIS:
+				msgIS, err := DecodeMessageIS(payload)
+				if err == nil {
+					s.logger.Debug("Received IS", "from", sender.String(), "name", msgIS.Name)
+					s.handleMessageIS(msgIS, sender)
+				} else {
+					s.logger.Debug("Failed to decode IS", "err", err)
+				}
+			case MsgTypeGET:
+				msgGET, err := DecodeMessageGET(payload)
+				if err == nil {
+					s.logger.Debug("Received GET", "from", sender.String(), "name", msgGET.Name, "ttl", msgGET.TTL)
+					s.handleMessageGET(msgGET, sender)
+				} else {
+					s.logger.Debug("Failed to decode GET", "err", err)
+				}
+			case MsgTypeSET:
+				msgSET, err := DecodeMessageSET(payload)
+				if err == nil {
+					s.logger.Debug("Received SET", "name", msgSET.Name)
+					s.handleMessageSET(msgSET, sender)
+				} else {
+					s.logger.Debug("Failed to decode SET", "err", err)
+				}
+			default:
+				s.logger.Debug("Unknown message type", "msgType", msgType)
 			}
 		}
 	}()
 
 	<-ctx.Done()
-	close(out)
 	s.conn.Close()
 	s.logger.Debug("Socket stopped")
 }
@@ -114,7 +149,35 @@ func (s *Socket) Close() error {
 	return s.conn.Close()
 }
 
-// SetReadDeadline sets a read timeout.
-func (s *Socket) SetReadDeadline(t time.Time) error {
-	return s.conn.SetReadDeadline(t)
+func (s *Socket) AddListener(listener MessageListener) {
+	s.listenersMu.Lock()
+	defer s.listenersMu.Unlock()
+	s.listeners = append(s.listeners, listener)
+}
+
+func (s *Socket) handleMessageIS(msg *MessageIS, sender *net.UDPAddr) {
+	s.listenersMu.RLock()
+	defer s.listenersMu.RUnlock()
+
+	for _, listener := range s.listeners {
+		listener.OnMessageIS(msg, sender)
+	}
+}
+
+func (s *Socket) handleMessageGET(msg *MessageGET, sender *net.UDPAddr) {
+	s.listenersMu.RLock()
+	defer s.listenersMu.RUnlock()
+
+	for _, listener := range s.listeners {
+		listener.OnMessageGET(msg, sender)
+	}
+}
+
+func (s *Socket) handleMessageSET(msg *MessageSET, sender *net.UDPAddr) {
+	s.listenersMu.RLock()
+	defer s.listenersMu.RUnlock()
+
+	for _, listener := range s.listeners {
+		listener.OnMessageSET(msg, sender)
+	}
 }

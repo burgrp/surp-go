@@ -35,6 +35,7 @@ func NewNative(socket *surp.Socket, registry *Registry, logger *slog.Logger) *Na
 	}
 
 	registry.AddListener(n)
+	socket.AddListener(n)
 	return n
 }
 
@@ -46,40 +47,6 @@ loop:
 		select {
 		case <-ctx.Done():
 			break loop
-		case msg := <-n.socket.ReceivedMessages:
-			if msg.Version != surp.ProtocolVersion1 {
-				n.logger.Debug("Invalid protocol version", "version", msg.Version)
-				continue
-			}
-
-			switch msg.Type {
-			case surp.MsgTypeIS:
-				msgIS, err := surp.DecodeMessageIS(msg.Payload)
-				if err == nil {
-					n.logger.Debug("Received IS", "from", msg.Sender.String(), "name", msgIS.Name)
-					n.registry.UpdateFromIS(msgIS, msg.Sender)
-				} else {
-					n.logger.Debug("Failed to decode IS", "err", err)
-				}
-			case surp.MsgTypeGET:
-				msgGET, err := surp.DecodeMessageGET(msg.Payload)
-				if err == nil {
-					n.logger.Debug("Received GET", "from", msg.Sender.String(), "name", msgGET.Name, "ttl", msgGET.TTL)
-					n.handleGET(msgGET, msg.Sender)
-				} else {
-					n.logger.Debug("Failed to decode GET", "err", err)
-				}
-			case surp.MsgTypeSET:
-				msgSET, err := surp.DecodeMessageSET(msg.Payload)
-				if err == nil {
-					n.logger.Debug("Received SET", "name", msgSET.Name)
-					n.handleSET(msgSET)
-				} else {
-					n.logger.Debug("Failed to decode SET", "err", err)
-				}
-			default:
-				n.logger.Debug("Unknown message type", "msgType", msg.Type)
-			}
 		}
 	}
 	n.logger.Debug("Native bridge stopped")
@@ -141,8 +108,7 @@ func (n *Native) OnRegisterRemove(name string) {
 	}
 }
 
-// handleGET processes a GET message, stores a subscription, and sends current value if known.
-func (n *Native) handleGET(msg *surp.MessageGET, sender *net.UDPAddr) {
+func (n *Native) OnMessageGET(msg *surp.MessageGET, sender *net.UDPAddr) {
 	if msg.TTL > 0 {
 		n.mu.Lock()
 		n.subscribers[msg.Name] = append(n.subscribers[msg.Name], subscription{
@@ -169,8 +135,7 @@ func (n *Native) handleGET(msg *surp.MessageGET, sender *net.UDPAddr) {
 	}
 }
 
-// handleSET forwards a SET message to the original provider.
-func (n *Native) handleSET(msg *surp.MessageSET) {
+func (n *Native) OnMessageSET(msg *surp.MessageSET, sender *net.UDPAddr) {
 	reg, ok := n.registry.Get(msg.Name)
 	if !ok || reg.Source == nil {
 		n.logger.Debug("Cannot route SET — register not found or has no provider", "name", msg.Name)
@@ -181,4 +146,7 @@ func (n *Native) handleSET(msg *surp.MessageSET) {
 		n.socket.WriteMessage(reg.Source, surp.MsgTypeSET, encoded)
 		n.logger.Debug("Forwarded SET to provider", "name", msg.Name, "provider", reg.Source.String())
 	}
+}
+
+func (n *Native) OnMessageIS(msg *surp.MessageIS, sender *net.UDPAddr) {
 }
