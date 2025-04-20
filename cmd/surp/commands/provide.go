@@ -1,9 +1,9 @@
 package commands
 
 import (
-	"errors"
-	"strings"
+	"fmt"
 
+	surp "github.com/burgrp/surp-go/pkg"
 	"github.com/burgrp/surp-go/pkg/provider"
 	"github.com/spf13/cobra"
 )
@@ -34,32 +34,32 @@ func runProvide(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	valueStr := args[1]
 
-	metadata := make(map[string]string, len(args)-2)
-	for _, arg := range args[2:] {
-		kv := strings.SplitN(arg, ":", 2)
-		if len(kv) != 2 {
-			return errors.New("metadata must be in the form key:value")
-		}
-		metadata[kv[0]] = kv[1]
+	// metadata := make(map[string]string, len(args)-2)
+	// for _, arg := range args[2:] {
+	// 	kv := strings.SplitN(arg, ":", 2)
+	// 	if len(kv) != 2 {
+	// 		return errors.New("metadata must be in the form key:value")
+	// 	}
+	// 	metadata[kv[0]] = kv[1]
+	// }
+
+	println("registry:", env.Registry)
+	println("name:", name)
+
+	value, typ, err := surp.ParseString(valueStr)
+	if err != nil {
+		return err
+	}
+	println("value:", fmt.Sprintf("%v", value))
+	println("type:", surp.TypeToString(typ))
+
+	ro, err := cmd.Flags().GetBool("read-only")
+	if err != nil {
+		return err
 	}
 
-	println("name:", name)
-	println("value:", valueStr)
-	println("metadata:", metadata)
-	println("registry:", env.Registry)
-
+	println("read-only:", ro)
 	/*
-
-		typ := "int"
-		if t, ok := metadata["type"]; ok {
-			typ = t
-		}
-
-		ro, err := cmd.Flags().GetBool("read-only")
-		if err != nil {
-			return err
-		}
-
 		group, err := surp.JoinGroup(env.Interface, env.Group, false)
 		if err != nil {
 			return err
