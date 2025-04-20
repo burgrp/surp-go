@@ -98,7 +98,7 @@ func DecodeMessageHeader(data []byte) (version uint8, msgType MsgType, err error
 	return version, msgType, nil
 }
 
-func EncodeMessageIS(msg MessageIS) ([]byte, error) {
+func EncodeMessageIS(msg *MessageIS) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(ProtocolVersion1) // Version
 	buf.WriteByte(byte(MsgTypeIS))  // MsgType
@@ -192,7 +192,7 @@ func DecodeMessageIS(data []byte) (*MessageIS, error) {
 	}, nil
 }
 
-func EncodeMessageSET(msg MessageSET) ([]byte, error) {
+func EncodeMessageSET(msg *MessageSET) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(ProtocolVersion1)
 	buf.WriteByte(byte(MsgTypeSET))
@@ -236,7 +236,7 @@ func DecodeMessageSET(data []byte) (*MessageSET, error) {
 	}, nil
 }
 
-func EncodeMessageGET(msg MessageGET) ([]byte, error) {
+func EncodeMessageGET(msg *MessageGET) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(ProtocolVersion1)
 	buf.WriteByte(byte(MsgTypeGET))

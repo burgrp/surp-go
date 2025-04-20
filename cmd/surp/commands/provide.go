@@ -1,6 +1,10 @@
 package commands
 
 import (
+	"errors"
+	"strings"
+
+	"github.com/burgrp/surp-go/pkg/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -22,23 +26,29 @@ Default type is int, if not specified otherwise in metadata.`,
 }
 
 func runProvide(cmd *cobra.Command, args []string) error {
+	env, err := provider.GetEnvironment()
+	if err != nil {
+		return err
+	}
+
+	name := args[0]
+	valueStr := args[1]
+
+	metadata := make(map[string]string, len(args)-2)
+	for _, arg := range args[2:] {
+		kv := strings.SplitN(arg, ":", 2)
+		if len(kv) != 2 {
+			return errors.New("metadata must be in the form key:value")
+		}
+		metadata[kv[0]] = kv[1]
+	}
+
+	println("name:", name)
+	println("value:", valueStr)
+	println("metadata:", metadata)
+	println("registry:", env.Registry)
+
 	/*
-		env, err := surp.GetEnvironment()
-		if err != nil {
-			return err
-		}
-
-		name := args[0]
-		valueStr := args[1]
-
-		metadata := make(map[string]string, len(args)-2)
-		for _, arg := range args[2:] {
-			kv := strings.SplitN(arg, ":", 2)
-			if len(kv) != 2 {
-				return errors.New("metadata must be in the form key:value")
-			}
-			metadata[kv[0]] = kv[1]
-		}
 
 		typ := "int"
 		if t, ok := metadata["type"]; ok {

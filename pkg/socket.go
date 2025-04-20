@@ -7,14 +7,6 @@ import (
 	"sync"
 )
 
-// Message represents a parsed SURP message.
-type Message struct {
-	Version uint8
-	Type    MsgType
-	Payload []byte
-	Sender  *net.UDPAddr
-}
-
 // Socket handles sending and receiving SURP messages via UDP.
 type Socket struct {
 	conn        *net.UDPConn
@@ -22,6 +14,7 @@ type Socket struct {
 	logger      *slog.Logger
 	listeners   []MessageListener
 	listenersMu sync.RWMutex
+	closing     bool
 }
 
 // Socket calls these methods synchronously when a message is received.
@@ -64,13 +57,9 @@ func (s *Socket) Run(ctx context.Context) {
 		for {
 			n, sender, err := s.conn.ReadFromUDP(s.readBuf)
 			if err != nil {
-				// if err == net.ErrClosed {
-				// 	s.logger.Debug("Socket closed")
-				// 	break
-				// }
-				// s.logger.Debug("Socket read error", "err", err)
-				// continue
-				s.logger.Debug("Socket read error", "err", err)
+				if !s.closing {
+					s.logger.Error("Socket read error", "err", err)
+				}
 				break
 			}
 			if n < 2 {
@@ -123,12 +112,36 @@ func (s *Socket) Run(ctx context.Context) {
 	}()
 
 	<-ctx.Done()
+	s.closing = true
 	s.conn.Close()
 	s.logger.Debug("Socket stopped")
 }
 
-// WriteMessage encodes and sends a SURP message to the target address.
-func (s *Socket) WriteMessage(addr *net.UDPAddr, msgType MsgType, body []byte) error {
+func (s *Socket) SendMessageIS(addr *net.UDPAddr, msg *MessageIS) error {
+	encoded, err := EncodeMessageIS(msg)
+	if err != nil {
+		return err
+	}
+	return s.sendMessage(addr, MsgTypeIS, encoded)
+}
+
+func (s *Socket) SendMessageGET(addr *net.UDPAddr, msg *MessageGET) error {
+	encoded, err := EncodeMessageGET(msg)
+	if err != nil {
+		return err
+	}
+	return s.sendMessage(addr, MsgTypeGET, encoded)
+}
+
+func (s *Socket) SendMessageSET(addr *net.UDPAddr, msg *MessageSET) error {
+	encoded, err := EncodeMessageSET(msg)
+	if err != nil {
+		return err
+	}
+	return s.sendMessage(addr, MsgTypeSET, encoded)
+}
+
+func (s *Socket) sendMessage(addr *net.UDPAddr, msgType MsgType, body []byte) error {
 	packet := make([]byte, 2+len(body))
 	packet[0] = 0x01 // version
 	packet[1] = byte(msgType)
@@ -143,12 +156,6 @@ func (s *Socket) WriteMessage(addr *net.UDPAddr, msgType MsgType, body []byte) e
 	return err
 }
 
-// Close closes the underlying UDP connection.
-func (s *Socket) Close() error {
-	s.logger.Debug("Closing socket")
-	return s.conn.Close()
-}
-
 func (s *Socket) AddListener(listener MessageListener) {
 	s.listenersMu.Lock()
 	defer s.listenersMu.Unlock()
@@ -158,7 +165,6 @@ func (s *Socket) AddListener(listener MessageListener) {
 func (s *Socket) handleMessageIS(msg *MessageIS, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
-
 	for _, listener := range s.listeners {
 		listener.OnMessageIS(msg, sender)
 	}
@@ -167,7 +173,6 @@ func (s *Socket) handleMessageIS(msg *MessageIS, sender *net.UDPAddr) {
 func (s *Socket) handleMessageGET(msg *MessageGET, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
-
 	for _, listener := range s.listeners {
 		listener.OnMessageGET(msg, sender)
 	}
@@ -176,7 +181,6 @@ func (s *Socket) handleMessageGET(msg *MessageGET, sender *net.UDPAddr) {
 func (s *Socket) handleMessageSET(msg *MessageSET, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
-
 	for _, listener := range s.listeners {
 		listener.OnMessageSET(msg, sender)
 	}

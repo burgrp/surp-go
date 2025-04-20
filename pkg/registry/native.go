@@ -62,22 +62,20 @@ func (n *Native) OnRegisterUpdate(r *Register) {
 		return
 	}
 
-	msg := surp.MessageIS{
+	msg := &surp.MessageIS{
 		TTL:       r.TTL,
 		Name:      r.Name,
 		ValueType: r.ValueType,
 		Value:     r.Value,
 		Metadata:  r.Metadata,
 	}
-	encoded, err := surp.EncodeMessageIS(msg)
-	if err != nil {
-		n.logger.Debug("Failed to encode IS for update", "name", r.Name, "err", err)
-		return
-	}
 
-	n.logger.Debug("Forwarding IS update", "name", r.Name, "subs", len(subs))
 	for _, s := range subs {
-		n.socket.WriteMessage(s.addr, surp.MsgTypeIS, encoded)
+		err := n.socket.SendMessageIS(s.addr, msg)
+		if err != nil {
+			n.logger.Debug("Failed to send IS undefined", "name", r.Name, "to", s.addr.String(), "err", err)
+			continue
+		}
 	}
 }
 
@@ -91,20 +89,18 @@ func (n *Native) OnRegisterRemove(name string) {
 		return
 	}
 
-	msg := surp.MessageIS{
+	msg := &surp.MessageIS{
 		TTL:       0,
 		Name:      name,
 		ValueType: surp.ValueUndefined,
 	}
-	encoded, err := surp.EncodeMessageIS(msg)
-	if err != nil {
-		n.logger.Debug("Failed to encode IS (undefined)", "name", name, "err", err)
-		return
-	}
 
-	n.logger.Debug("Forwarding IS undefined", "name", name, "subs", len(subs))
 	for _, s := range subs {
-		n.socket.WriteMessage(s.addr, surp.MsgTypeIS, encoded)
+		err := n.socket.SendMessageIS(s.addr, msg)
+		if err != nil {
+			n.logger.Debug("Failed to send IS undefined", "name", name, "to", s.addr.String(), "err", err)
+			continue
+		}
 	}
 }
 
@@ -121,17 +117,19 @@ func (n *Native) OnMessageGET(msg *surp.MessageGET, sender *net.UDPAddr) {
 	}
 
 	if reg, ok := n.registry.Get(msg.Name); ok && reg.ValueType != surp.ValueUndefined {
-		isMsg := surp.MessageIS{
+		isMsg := &surp.MessageIS{
 			TTL:       reg.TTL,
 			Name:      reg.Name,
 			ValueType: reg.ValueType,
 			Value:     reg.Value,
 			Metadata:  reg.Metadata,
 		}
-		if encoded, err := surp.EncodeMessageIS(isMsg); err == nil {
-			n.socket.WriteMessage(sender, surp.MsgTypeIS, encoded)
-			n.logger.Debug("Sent immediate IS response", "name", reg.Name, "to", sender.String())
+		err := n.socket.SendMessageIS(sender, isMsg)
+		if err != nil {
+			n.logger.Debug("Failed to send IS to subscriber", "name", msg.Name, "to", sender.String(), "err", err)
+			return
 		}
+		n.logger.Debug("Sent IS to subscriber", "name", msg.Name, "to", sender.String())
 	}
 }
 
@@ -142,10 +140,12 @@ func (n *Native) OnMessageSET(msg *surp.MessageSET, sender *net.UDPAddr) {
 		return
 	}
 
-	if encoded, err := surp.EncodeMessageSET(*msg); err == nil {
-		n.socket.WriteMessage(reg.Source, surp.MsgTypeSET, encoded)
-		n.logger.Debug("Forwarded SET to provider", "name", msg.Name, "provider", reg.Source.String())
+	err := n.socket.SendMessageSET(reg.Source, msg)
+	if err != nil {
+		n.logger.Debug("Failed to send SET to provider", "name", msg.Name, "provider", reg.Source.String(), "err", err)
+		return
 	}
+	n.logger.Debug("Sent SET to provider", "name", msg.Name, "provider", reg.Source.String())
 }
 
 func (n *Native) OnMessageIS(msg *surp.MessageIS, sender *net.UDPAddr) {
