@@ -8,16 +8,15 @@ import (
 	"sync"
 	"time"
 
-	surp "github.com/burgrp/surp-go/pkg"
+	pb "github.com/burgrp/surp-go/pkg/pb"
 )
 
 // Register represents the state of a single SURP register.
 type Register struct {
 	Name      string
-	ValueType surp.ValueType
-	Value     any
-	Metadata  []surp.MetadataEntry
-	TTL       uint16
+	Value     *pb.Value
+	Metadata  []*pb.MetadataEntry
+	TTL       uint32
 	UpdatedAt time.Time
 	Source    *net.UDPAddr
 }
@@ -56,32 +55,31 @@ func (r *Registry) AddListener(l Listener) {
 }
 
 // UpdateFromIS inserts or updates a register based on an IS message.
-func (r *Registry) UpdateFromIS(msg *surp.MessageIS, source *net.UDPAddr) {
+func (r *Registry) UpdateFromIS(msg *pb.MessageIS, source *net.UDPAddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	existing, found := r.entries[msg.Name]
+	existing, found := r.entries[msg.GetName()]
 
 	entry := &Register{
-		Name:      msg.Name,
-		ValueType: msg.ValueType,
-		Value:     msg.Value,
-		Metadata:  msg.Metadata,
-		TTL:       msg.TTL,
+		Name:      msg.GetName(),
+		Value:     msg.GetValue(),
+		Metadata:  msg.GetMetadata(),
+		TTL:       msg.GetTtl(),
 		UpdatedAt: now,
 		Source:    source,
 	}
 
-	r.entries[msg.Name] = entry
+	r.entries[msg.GetName()] = entry
 
-	changed := !found || existing.ValueType != msg.ValueType || !reflect.DeepEqual(existing.Value, msg.Value)
+	changed := !found || !reflect.DeepEqual(existing.Value, msg.GetValue())
 
 	if changed {
 		if !found {
-			r.logger.Debug("Register added", "name", msg.Name, "type", msg.ValueType)
+			r.logger.Debug("Register added", "name", msg.GetName())
 		} else {
-			r.logger.Debug("Register updated", "name", msg.Name, "type", msg.ValueType)
+			r.logger.Debug("Register updated", "name", msg.GetName())
 		}
 		for _, l := range r.listeners {
 			l.OnRegisterUpdate(entry)

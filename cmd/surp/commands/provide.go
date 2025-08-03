@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	surp "github.com/burgrp/surp-go/pkg"
+	pb "github.com/burgrp/surp-go/pkg/pb"
 	"github.com/burgrp/surp-go/pkg/provider"
 	"github.com/spf13/cobra"
 )
@@ -33,20 +34,15 @@ func runProvide(cmd *cobra.Command, args []string) error {
 	}
 
 	regName := args[0]
-	regTypeStr := args[1]
+	regType := args[1]
 	regValueStr := args[2]
-
-	regType, err := surp.StringToType(regTypeStr)
-	if err != nil {
-		return fmt.Errorf("invalid type %q: %w", regTypeStr, err)
-	}
 
 	regValue, err := surp.ParseString(regValueStr, regType)
 	if err != nil {
 		return fmt.Errorf("failed to parse value %q: %w", regValueStr, err)
 	}
 
-	metadata := make([]surp.MetadataEntry, len(args)-3)
+	metadata := make([]*pb.MetadataEntry, len(args)-3)
 	for i, arg := range args[3:] {
 		kv := strings.SplitN(arg, ":", 2)
 		if len(kv) != 2 {
@@ -57,38 +53,37 @@ func runProvide(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid metadata key %q: %w", kv[0], err)
 		}
 
-		var metaType surp.ValueType
+		var metaType string
 		switch metaKey {
-		case surp.MetaRO:
-			metaType = surp.ValueBool
-		case surp.MetaMin, surp.MetaMax:
+		case pb.MetadataKey_META_RO:
+			metaType = "bool"
+		case pb.MetadataKey_META_MIN, pb.MetadataKey_META_MAX:
 			metaType = regType
-		case surp.MetaUnit:
-			metaType = surp.ValueShortString
-		case surp.MetaDescription:
-			metaType = surp.ValueLongString
+		case pb.MetadataKey_META_UNIT:
+			metaType = "ss"
+		case pb.MetadataKey_META_DESCRIPTION:
+			metaType = "ls"
 		}
 
 		metaValue, err := surp.ParseString(kv[1], metaType)
 		if err != nil {
 			return fmt.Errorf("invalid metadata value %q for key %q: %w", kv[1], kv[0], err)
 		}
-		metadata[i] = surp.MetadataEntry{
-			Key:       metaKey,
-			ValueType: metaType,
-			Value:     metaValue,
+		metadata[i] = &pb.MetadataEntry{
+			Key:   metaKey,
+			Value: metaValue,
 		}
 	}
 
-	roAny, roType := surp.GetMetadataValue(metadata, surp.MetaRO)
-	ro := roType != surp.ValueUndefined && roAny.(bool)
+	roVal := surp.GetMetadataValue(metadata, pb.MetadataKey_META_RO)
+	ro := roVal != nil && roVal.GetBoolValue()
 
 	println("registry:", env.Registry)
 	println("name:", regName)
-	println("type:", surp.TypeToString(regType))
+	println("type:", regType)
 	println("value:", fmt.Sprintf("%v", regValue))
 	for _, meta := range metadata {
-		println("(", surp.MetadataKeyToString(meta.Key), "=", fmt.Sprintf("%v", meta.Value), ")")
+		println("(", surp.MetadataKeyToString(meta.GetKey()), "=", fmt.Sprintf("%v", meta.Value), ")")
 	}
 	println("read-only:", ro)
 	/*

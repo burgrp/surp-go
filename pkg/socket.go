@@ -5,6 +5,10 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/burgrp/surp-go/pkg/pb"
 )
 
 // Socket handles sending and receiving SURP messages via UDP.
@@ -22,9 +26,9 @@ type Socket struct {
 // All errors should be handled within the listener.
 // The listener should not modify the message.
 type MessageListener interface {
-	OnMessageIS(msg *MessageIS, sender *net.UDPAddr)
-	OnMessageGET(msg *MessageGET, sender *net.UDPAddr)
-	OnMessageSET(msg *MessageSET, sender *net.UDPAddr)
+	OnMessageIS(msg *pb.MessageIS, sender *net.UDPAddr)
+	OnMessageGET(msg *pb.MessageGET, sender *net.UDPAddr)
+	OnMessageSET(msg *pb.MessageSET, sender *net.UDPAddr)
 }
 
 // NewSocket creates and binds a UDP socket to the given address.
@@ -62,51 +66,23 @@ func (s *Socket) Run(ctx context.Context) error {
 				}
 				break
 			}
-			if n < 2 {
-				s.logger.Debug("Discarding short packet", "bytes", n, "from", sender.String())
+			var msg pb.SurpMessage
+			if err := proto.Unmarshal(s.readBuf[:n], &msg); err != nil {
+				s.logger.Debug("Failed to decode message", "err", err)
 				continue
 			}
-
-			version, msgType, err := DecodeMessageHeader(s.readBuf[:n])
-			if err != nil {
-				s.logger.Debug("Invalid header", "err", err)
-				continue
-			}
-
-			if version != ProtocolVersion1 {
-				s.logger.Debug("Invalid protocol version", "version", version)
-				continue
-			}
-
-			payload := s.readBuf[2:n]
-
-			switch msgType {
-			case MsgTypeIS:
-				msgIS, err := DecodeMessageIS(payload)
-				if err == nil {
-					s.logger.Debug("Received IS", "from", sender.String(), "name", msgIS.Name)
-					s.handleMessageIS(msgIS, sender)
-				} else {
-					s.logger.Debug("Failed to decode IS", "err", err)
-				}
-			case MsgTypeGET:
-				msgGET, err := DecodeMessageGET(payload)
-				if err == nil {
-					s.logger.Debug("Received GET", "from", sender.String(), "name", msgGET.Name, "ttl", msgGET.TTL)
-					s.handleMessageGET(msgGET, sender)
-				} else {
-					s.logger.Debug("Failed to decode GET", "err", err)
-				}
-			case MsgTypeSET:
-				msgSET, err := DecodeMessageSET(payload)
-				if err == nil {
-					s.logger.Debug("Received SET", "name", msgSET.Name)
-					s.handleMessageSET(msgSET, sender)
-				} else {
-					s.logger.Debug("Failed to decode SET", "err", err)
-				}
+			switch m := msg.Msg.(type) {
+			case *pb.SurpMessage_Is:
+				s.logger.Debug("Received IS", "from", sender.String(), "name", m.Is.GetName())
+				s.handleMessageIS(m.Is, sender)
+			case *pb.SurpMessage_Get:
+				s.logger.Debug("Received GET", "from", sender.String(), "name", m.Get.GetName(), "ttl", m.Get.GetTtl())
+				s.handleMessageGET(m.Get, sender)
+			case *pb.SurpMessage_Set:
+				s.logger.Debug("Received SET", "name", m.Set.GetName())
+				s.handleMessageSET(m.Set, sender)
 			default:
-				s.logger.Debug("Unknown message type", "msgType", msgType)
+				s.logger.Debug("Unknown message type")
 			}
 		}
 	}()
@@ -119,41 +95,36 @@ func (s *Socket) Run(ctx context.Context) error {
 	return nil
 }
 
-func (s *Socket) SendMessageIS(addr *net.UDPAddr, msg *MessageIS) error {
-	encoded, err := EncodeMessageIS(msg)
+func (s *Socket) SendMessageIS(addr *net.UDPAddr, msg *pb.MessageIS) error {
+	packet, err := proto.Marshal(&pb.SurpMessage{Msg: &pb.SurpMessage_Is{Is: msg}})
 	if err != nil {
 		return err
 	}
-	return s.sendMessage(addr, MsgTypeIS, encoded)
+	return s.sendPacket(addr, packet)
 }
 
-func (s *Socket) SendMessageGET(addr *net.UDPAddr, msg *MessageGET) error {
-	encoded, err := EncodeMessageGET(msg)
+func (s *Socket) SendMessageGET(addr *net.UDPAddr, msg *pb.MessageGET) error {
+	packet, err := proto.Marshal(&pb.SurpMessage{Msg: &pb.SurpMessage_Get{Get: msg}})
 	if err != nil {
 		return err
 	}
-	return s.sendMessage(addr, MsgTypeGET, encoded)
+	return s.sendPacket(addr, packet)
 }
 
-func (s *Socket) SendMessageSET(addr *net.UDPAddr, msg *MessageSET) error {
-	encoded, err := EncodeMessageSET(msg)
+func (s *Socket) SendMessageSET(addr *net.UDPAddr, msg *pb.MessageSET) error {
+	packet, err := proto.Marshal(&pb.SurpMessage{Msg: &pb.SurpMessage_Set{Set: msg}})
 	if err != nil {
 		return err
 	}
-	return s.sendMessage(addr, MsgTypeSET, encoded)
+	return s.sendPacket(addr, packet)
 }
 
-func (s *Socket) sendMessage(addr *net.UDPAddr, msgType MsgType, body []byte) error {
-	packet := make([]byte, 2+len(body))
-	packet[0] = 0x01 // version
-	packet[1] = byte(msgType)
-	copy(packet[2:], body)
+func (s *Socket) sendPacket(addr *net.UDPAddr, packet []byte) error {
 	_, err := s.conn.WriteToUDP(packet, addr)
-
 	if err != nil {
 		s.logger.Debug("Failed to send packet", "to", addr.String(), "err", err)
 	} else {
-		s.logger.Debug("Message sent", "type", msgType, "to", addr.String(), "size", len(packet))
+		s.logger.Debug("Message sent", "to", addr.String(), "size", len(packet))
 	}
 	return err
 }
@@ -164,7 +135,7 @@ func (s *Socket) AddListener(listener MessageListener) {
 	s.listeners = append(s.listeners, listener)
 }
 
-func (s *Socket) handleMessageIS(msg *MessageIS, sender *net.UDPAddr) {
+func (s *Socket) handleMessageIS(msg *pb.MessageIS, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
 	for _, listener := range s.listeners {
@@ -172,7 +143,7 @@ func (s *Socket) handleMessageIS(msg *MessageIS, sender *net.UDPAddr) {
 	}
 }
 
-func (s *Socket) handleMessageGET(msg *MessageGET, sender *net.UDPAddr) {
+func (s *Socket) handleMessageGET(msg *pb.MessageGET, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
 	for _, listener := range s.listeners {
@@ -180,7 +151,7 @@ func (s *Socket) handleMessageGET(msg *MessageGET, sender *net.UDPAddr) {
 	}
 }
 
-func (s *Socket) handleMessageSET(msg *MessageSET, sender *net.UDPAddr) {
+func (s *Socket) handleMessageSET(msg *pb.MessageSET, sender *net.UDPAddr) {
 	s.listenersMu.RLock()
 	defer s.listenersMu.RUnlock()
 	for _, listener := range s.listeners {
