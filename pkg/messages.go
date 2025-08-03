@@ -27,22 +27,47 @@ const (
 	ValueS32         ValueType = 0x07
 	ValueU64         ValueType = 0x08
 	ValueS64         ValueType = 0x09
-	ValueDouble      ValueType = 0x0A
+	ValueFloat64     ValueType = 0x0A
 	ValueShortString ValueType = 0x0B
 	ValueLongString  ValueType = 0x0C
 )
+
+// Value type names
+var VALUE_TYPE_NAMES = map[ValueType]string{
+	ValueUndefined:   "undefined",
+	ValueBool:        "bool",
+	ValueU8:          "u8",
+	ValueS8:          "s8",
+	ValueU16:         "u16",
+	ValueS16:         "s16",
+	ValueU32:         "u32",
+	ValueS32:         "s32",
+	ValueU64:         "u64",
+	ValueS64:         "s64",
+	ValueFloat64:     "float64",
+	ValueShortString: "ss",
+	ValueLongString:  "ls",
+}
 
 // Metadata keys
 type MetadataKey uint8
 
 const (
-	MetaType        MetadataKey = 0x01
-	MetaRW          MetadataKey = 0x02
-	MetaMin         MetadataKey = 0x03
-	MetaMax         MetadataKey = 0x04
-	MetaUnit        MetadataKey = 0x05
-	MetaDescription MetadataKey = 0x06
+	MetaRO          MetadataKey = 0x01
+	MetaMin         MetadataKey = 0x02
+	MetaMax         MetadataKey = 0x03
+	MetaUnit        MetadataKey = 0x04
+	MetaDescription MetadataKey = 0x05
 )
+
+// Metadata key names
+var METADATA_KEY_NAMES = map[MetadataKey]string{
+	MetaRO:          "ro",
+	MetaMin:         "min",
+	MetaMax:         "max",
+	MetaUnit:        "unit",
+	MetaDescription: "description",
+}
 
 // Metadata entry structure
 type MetadataEntry struct {

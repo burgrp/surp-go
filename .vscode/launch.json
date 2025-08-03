@@ -25,10 +25,16 @@
             "program": "${workspaceFolder}/cmd/surp/main.go",
             "args": [
                 "provide",
-                "test",
-                "123",
                 "-l",
                 "debug",
+                "test",
+                "float64",
+                "0.1",
+                //"ro:true",
+                "min:0",
+                "max:100",
+                "unit:percent",
+                "description:Test float64 value",
             ],
             "env": {
                 "SURP_REGISTRY": "localhost:5530",

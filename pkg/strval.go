@@ -7,83 +7,24 @@ import (
 )
 
 func StringToType(s string) (ValueType, error) {
-	switch s {
-	case "bool":
-		return ValueBool, nil
-	case "s8":
-		return ValueS8, nil
-	case "u8":
-		return ValueU8, nil
-	case "s16":
-		return ValueS16, nil
-	case "u16":
-		return ValueU16, nil
-	case "s32":
-		return ValueS32, nil
-	case "u32":
-		return ValueU32, nil
-	case "s64":
-		return ValueS64, nil
-	case "u64":
-		return ValueU64, nil
-	case "dbl":
-		return ValueDouble, nil
-	case "ss":
-		return ValueShortString, nil
-	case "ls":
-		return ValueLongString, nil
-	default:
-		return 0, fmt.Errorf("type %q is not one of supported types: bool, s8, u8, s16, u16, s32, u32, s64, u64, dbl, ss, ls", s)
+	for typ, name := range VALUE_TYPE_NAMES {
+		if name == s {
+			return typ, nil
+		}
 	}
+	return 0, fmt.Errorf("unknown value type %q, valid types are: %v", s, VALUE_TYPE_NAMES)
 }
 
 func TypeToString(t ValueType) string {
-	switch t {
-	case ValueBool:
-		return "bool"
-	case ValueS8:
-		return "s8"
-	case ValueU8:
-		return "u8"
-	case ValueS16:
-		return "s16"
-	case ValueU16:
-		return "u16"
-	case ValueS32:
-		return "s32"
-	case ValueU32:
-		return "u32"
-	case ValueS64:
-		return "s64"
-	case ValueU64:
-		return "u64"
-	case ValueDouble:
-		return "dbl"
-	case ValueShortString:
-		return "ss"
-	case ValueLongString:
-		return "ls"
-	default:
-		return ""
-	}
+	return VALUE_TYPE_NAMES[t]
 }
 
-// ParseString parses a string in form type:value into a value and type.
-func ParseString(str string) (any, ValueType, error) {
-	sepPos := strings.Index(str, ":")
-	if sepPos == -1 {
-		return nil, ValueUndefined, fmt.Errorf("expression %q does not match pattern type:value", str)
-	}
-
-	typStr := str[:sepPos]
-	valueStr := str[sepPos+1:]
-
-	typ, err := StringToType(typStr)
-	if err != nil {
-		return nil, ValueUndefined, err
-	}
+// ParseString parses a string to a value of the specified type.
+func ParseString(valueStr string, typ ValueType) (any, error) {
 
 	var value any
+	var err error
+
 	switch typ {
 	case ValueBool:
 		value = strings.ToUpper(valueStr) == "TRUE" || valueStr == "1"
@@ -108,17 +49,33 @@ func ParseString(str string) (any, ValueType, error) {
 		case ValueU64:
 			value = uint64(valueInt64)
 		}
-	case ValueDouble:
+	case ValueFloat64:
 		value, err = strconv.ParseFloat(valueStr, 64)
 	case ValueShortString, ValueLongString:
 		value = valueStr
-	default:
-		return nil, ValueUndefined, fmt.Errorf("unsupported type: %s", typStr)
 	}
 
-	if err != nil {
-		return nil, ValueUndefined, fmt.Errorf("failed to parse value: %s", err)
-	}
+	return value, err
+}
 
-	return value, typ, nil
+func StringToMetadataKey(s string) (MetadataKey, error) {
+	for key, name := range METADATA_KEY_NAMES {
+		if name == s {
+			return key, nil
+		}
+	}
+	return 0, fmt.Errorf("unknown metadata key %q, valid keys are: %v", s, METADATA_KEY_NAMES)
+}
+
+func MetadataKeyToString(key MetadataKey) string {
+	return METADATA_KEY_NAMES[key]
+}
+
+func GetMetadataValue(metadata []MetadataEntry, key MetadataKey) (any, ValueType) {
+	for _, entry := range metadata {
+		if entry.Key == key {
+			return entry.Value, entry.ValueType
+		}
+	}
+	return nil, ValueUndefined
 }

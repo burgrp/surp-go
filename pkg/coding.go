@@ -23,7 +23,7 @@ func encodeValue(buf *bytes.Buffer, vt ValueType, value any) error {
 		return binary.Write(buf, binary.BigEndian, value.(uint32))
 	case ValueU64, ValueS64:
 		return binary.Write(buf, binary.BigEndian, value.(uint64))
-	case ValueDouble:
+	case ValueFloat64:
 		return binary.Write(buf, binary.BigEndian, math.Float64bits(value.(float64)))
 	case ValueShortString:
 		s := []byte(value.(string))
@@ -58,7 +58,7 @@ func decodeValue(vt ValueType, buf *bytes.Reader) (any, error) {
 		var v uint64
 		err := binary.Read(buf, binary.BigEndian, &v)
 		return v, err
-	case ValueDouble:
+	case ValueFloat64:
 		var bits uint64
 		err := binary.Read(buf, binary.BigEndian, &bits)
 		return math.Float64frombits(bits), err

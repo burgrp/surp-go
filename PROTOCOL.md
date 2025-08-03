@@ -70,7 +70,7 @@ SURP enables:
 
 ## IS Message (Inform State)
 
-Used by providers to send register value, metadata, and TTL. Also used by the registry to forward updates or mark a register as undefined.
+Used by providers to send register value, metadata, and TTL. Also used by the registry to forward updates to consumers.
 
 ### Format
 
@@ -84,7 +84,9 @@ Used by providers to send register value, metadata, and TTL. Also used by the re
 | MetadataCount    | u8           | Number of metadata entries                  |
 | Metadata Entries | list         | See metadata format                         |
 
-**Note:** If `ValueType == 0x00` (UNDEFINED), no value is included. Registry uses this to notify subscribers when a register times out.
+If `ValueType == 0x00` (UNDEFINED), no value is included.
+
+Registry sends `IS` message with value`undefined` when last `IS` message from the provider expires.
 
 ---
 
@@ -116,6 +118,7 @@ Used by consumers to request or subscribe to a register.
 | Name        | UTF-8 bytes  | Register name                            |
 
 - When received, registry immediately replies with an `IS` message.
+- If registry does not know the register, it replies with value `undefined`.
 - If TTL > 0, registry stores the subscription and forwards future `IS` updates to the consumer.
 - Subscriptions expire automatically after TTL; consumers must refresh them.
 
@@ -135,7 +138,7 @@ Used by consumers to request or subscribe to a register.
 | 0x07 | S32           | 4 bytes, big-endian               |
 | 0x08 | U64           | 8 bytes, big-endian               |
 | 0x09 | S64           | 8 bytes, big-endian               |
-| 0x0A | DOUBLE        | IEEE754, 8 bytes, big-endian      |
+| 0x0A | FLOAT64       | IEEE754, 8 bytes                  |
 | 0x0B | SHORT_STRING  | u8 length + UTF-8 string          |
 | 0x0C | LONG_STRING   | u16 length (BE) + UTF-8 string    |
 
@@ -155,12 +158,11 @@ Each IS message includes a list of metadata entries:
 
 | Key  | Name        | ValueType      | Description                         |
 |------|-------------|----------------|-------------------------------------|
-| 0x01 | TYPE        | ValueType enum | Redundant; explicitly defines type  |
-| 0x02 | RW          | BOOL           | Read/write flag                     |
-| 0x03 | MIN         | Matches reg.   | Minimum allowed value               |
-| 0x04 | MAX         | Matches reg.   | Maximum allowed value               |
-| 0x05 | UNIT        | SHORT_STRING   | Display unit (e.g., "°C")           |
-| 0x06 | DESCRIPTION | SHORT/LONG_STRING | Human-readable description       |
+| 0x01 | RO          | BOOL           | Read only flag                      |
+| 0x02 | MIN         | Matches reg.   | Minimum allowed value               |
+| 0x03 | MAX         | Matches reg.   | Maximum allowed value               |
+| 0x04 | UNIT        | SHORT_STRING   | Display unit (e.g., "°C")           |
+| 0x05 | DESCRIPTION | LONG_STRING    | Human-readable description          |
 
 ---
 
@@ -174,11 +176,11 @@ Each IS message includes a list of metadata entries:
 
 ## TTL Handling
 
-- `IS` includes a TTL (timeout for that register)
-- When TTL expires without an update, registry:
-  - Removes the value
-  - Sends `IS` with `ValueType = UNDEFINED` to subscribers
-- `GET` also uses TTL for subscriptions
+- `IS` includes a TTL. Both registry and consumers must check the TTL.
+  - When TTL expires without an update:
+    - Registry removes the value
+    - Consumers treat the register as undefined
+- `GET` uses TTL for subscriptions
   - Consumers must resend GET to maintain long-lived subscriptions
 
 ---
