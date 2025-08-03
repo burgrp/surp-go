@@ -98,7 +98,7 @@ func (r *Registry) Get(name string) (*Register, bool) {
 }
 
 // Close stops the TTL reaper and shuts down the registry.
-func (r *Registry) Run(ctx context.Context) {
+func (r *Registry) Run(ctx context.Context) error {
 	r.logger.Debug("Registry started")
 loop:
 	for {
@@ -111,6 +111,8 @@ loop:
 	}
 	r.ticker.Stop()
 	r.logger.Debug("Registry stopped")
+
+	return nil
 }
 
 // Internal: Scan for and remove expired registers.

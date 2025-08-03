@@ -40,11 +40,9 @@ func runRegistry(cmd *cobra.Command, args []string) error {
 	}
 
 	registry := reg.NewRegistry(logger)
-	native := reg.NewNative(socket, registry, logger)
+	binding := reg.NewBinding(socket, registry, logger)
 
 	logger.Info("SURP registry started", "address", address)
-	cli.RunWorkers(socket, registry, native)
-	logger.Info("SURP registry stopped")
-
-	return nil
+	defer logger.Info("SURP registry stopped")
+	return cli.RunWorkers(socket, registry, binding)
 }

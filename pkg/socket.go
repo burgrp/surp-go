@@ -50,7 +50,7 @@ func NewSocket(listenAddr string, logger *slog.Logger) (*Socket, error) {
 }
 
 // StartReceiving starts reading messages and sends them to the returned channel.
-func (s *Socket) Run(ctx context.Context) {
+func (s *Socket) Run(ctx context.Context) error {
 	s.logger.Debug("Socket started")
 
 	go func() {
@@ -115,6 +115,8 @@ func (s *Socket) Run(ctx context.Context) {
 	s.closing = true
 	s.conn.Close()
 	s.logger.Debug("Socket stopped")
+
+	return nil
 }
 
 func (s *Socket) SendMessageIS(addr *net.UDPAddr, msg *MessageIS) error {
