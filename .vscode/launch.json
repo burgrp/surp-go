@@ -16,6 +16,25 @@
                 "debug",
             ],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "CLI - provide",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/surp/main.go",
+            "args": [
+                "provide",
+                "test",
+                "123",
+                "-l",
+                "debug",
+            ],
+            "env": {
+                "SURP_REGISTRY": "localhost:5530",
+            },
+            "console": "integratedTerminal"
         }
+
     ]
 }
