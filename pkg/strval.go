@@ -4,78 +4,96 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	pb "github.com/burgrp/surp-go/pkg/pb"
 )
 
-func StringToType(s string) (ValueType, error) {
-	for typ, name := range VALUE_TYPE_NAMES {
+var valueParsers = map[string]func(string) (*pb.Value, error){
+	"bool":    parseBool,
+	"u8":      parseU64,
+	"u16":     parseU64,
+	"u32":     parseU64,
+	"u64":     parseU64,
+	"s8":      parseS64,
+	"s16":     parseS64,
+	"s32":     parseS64,
+	"s64":     parseS64,
+	"float64": parseF64,
+	"ss":      parseString,
+	"ls":      parseString,
+}
+
+// ParseString parses a string into a Value based on a type name.
+func ParseString(valueStr string, typeName string) (*pb.Value, error) {
+	parser, ok := valueParsers[typeName]
+	if !ok {
+		return nil, fmt.Errorf("unknown value type %q", typeName)
+	}
+	return parser(valueStr)
+}
+
+func parseBool(s string) (*pb.Value, error) {
+	v := strings.ToUpper(s) == "TRUE" || s == "1"
+	return &pb.Value{Value: &pb.Value_BoolValue{BoolValue: v}}, nil
+}
+
+func parseU64(s string) (*pb.Value, error) {
+	v, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Value{Value: &pb.Value_U64Value{U64Value: v}}, nil
+}
+
+func parseS64(s string) (*pb.Value, error) {
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Value{Value: &pb.Value_S64Value{S64Value: v}}, nil
+}
+
+func parseF64(s string) (*pb.Value, error) {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Value{Value: &pb.Value_F64Value{F64Value: v}}, nil
+}
+
+func parseString(s string) (*pb.Value, error) {
+	return &pb.Value{Value: &pb.Value_StrValue{StrValue: s}}, nil
+}
+
+var metadataKeyNames = map[pb.MetadataKey]string{
+	pb.MetadataKey_META_RO:          "ro",
+	pb.MetadataKey_META_MIN:         "min",
+	pb.MetadataKey_META_MAX:         "max",
+	pb.MetadataKey_META_UNIT:        "unit",
+	pb.MetadataKey_META_DESCRIPTION: "description",
+}
+
+// StringToMetadataKey converts a string to a MetadataKey.
+func StringToMetadataKey(s string) (pb.MetadataKey, error) {
+	for k, name := range metadataKeyNames {
 		if name == s {
-			return typ, nil
+			return k, nil
 		}
 	}
-	return 0, fmt.Errorf("unknown value type %q, valid types are: %v", s, VALUE_TYPE_NAMES)
+	return 0, fmt.Errorf("unknown metadata key %q", s)
 }
 
-func TypeToString(t ValueType) string {
-	return VALUE_TYPE_NAMES[t]
+// MetadataKeyToString converts a MetadataKey to its string form.
+func MetadataKeyToString(key pb.MetadataKey) string {
+	return metadataKeyNames[key]
 }
 
-// ParseString parses a string to a value of the specified type.
-func ParseString(valueStr string, typ ValueType) (any, error) {
-
-	var value any
-	var err error
-
-	switch typ {
-	case ValueBool:
-		value = strings.ToUpper(valueStr) == "TRUE" || valueStr == "1"
-	case ValueS8, ValueU8, ValueS16, ValueU16, ValueS32, ValueU32, ValueS64, ValueU64:
-		var valueInt64 int64
-		valueInt64, err = strconv.ParseInt(valueStr, 10, 8)
-		switch typ {
-		case ValueS8:
-			value = int8(valueInt64)
-		case ValueU8:
-			value = uint8(valueInt64)
-		case ValueS16:
-			value = int16(valueInt64)
-		case ValueU16:
-			value = uint16(valueInt64)
-		case ValueS32:
-			value = int32(valueInt64)
-		case ValueU32:
-			value = uint32(valueInt64)
-		case ValueS64:
-			value = int64(valueInt64)
-		case ValueU64:
-			value = uint64(valueInt64)
-		}
-	case ValueFloat64:
-		value, err = strconv.ParseFloat(valueStr, 64)
-	case ValueShortString, ValueLongString:
-		value = valueStr
-	}
-
-	return value, err
-}
-
-func StringToMetadataKey(s string) (MetadataKey, error) {
-	for key, name := range METADATA_KEY_NAMES {
-		if name == s {
-			return key, nil
-		}
-	}
-	return 0, fmt.Errorf("unknown metadata key %q, valid keys are: %v", s, METADATA_KEY_NAMES)
-}
-
-func MetadataKeyToString(key MetadataKey) string {
-	return METADATA_KEY_NAMES[key]
-}
-
-func GetMetadataValue(metadata []MetadataEntry, key MetadataKey) (any, ValueType) {
+// GetMetadataValue finds a metadata entry by key.
+func GetMetadataValue(metadata []*pb.MetadataEntry, key pb.MetadataKey) *pb.Value {
 	for _, entry := range metadata {
-		if entry.Key == key {
-			return entry.Value, entry.ValueType
+		if entry.GetKey() == key {
+			return entry.Value
 		}
 	}
-	return nil, ValueUndefined
+	return nil
 }

@@ -8,11 +8,12 @@ import (
 	"time"
 
 	surp "github.com/burgrp/surp-go/pkg"
+	pb "github.com/burgrp/surp-go/pkg/pb"
 )
 
 type subscription struct {
 	addr    *net.UDPAddr
-	ttl     uint16
+	ttl     uint32
 	addedAt time.Time
 }
 
@@ -57,12 +58,11 @@ func (b *Binding) OnRegisterUpdate(r *Register) {
 		return
 	}
 
-	msg := &surp.MessageIS{
-		TTL:       r.TTL,
-		Name:      r.Name,
-		ValueType: r.ValueType,
-		Value:     r.Value,
-		Metadata:  r.Metadata,
+	msg := &pb.MessageIS{
+		Ttl:      r.TTL,
+		Name:     r.Name,
+		Value:    r.Value,
+		Metadata: r.Metadata,
 	}
 
 	for _, s := range subs {
@@ -84,10 +84,9 @@ func (b *Binding) OnRegisterRemove(name string) {
 		return
 	}
 
-	msg := &surp.MessageIS{
-		TTL:       0,
-		Name:      name,
-		ValueType: surp.ValueUndefined,
+	msg := &pb.MessageIS{
+		Ttl:  0,
+		Name: name,
 	}
 
 	for _, s := range subs {
@@ -99,36 +98,35 @@ func (b *Binding) OnRegisterRemove(name string) {
 	}
 }
 
-func (b *Binding) OnMessageGET(msg *surp.MessageGET, sender *net.UDPAddr) {
-	if msg.TTL > 0 {
+func (b *Binding) OnMessageGET(msg *pb.MessageGET, sender *net.UDPAddr) {
+	if msg.GetTtl() > 0 {
 		b.mu.Lock()
-		b.subscribers[msg.Name] = append(b.subscribers[msg.Name], subscription{
+		b.subscribers[msg.GetName()] = append(b.subscribers[msg.GetName()], subscription{
 			addr:    sender,
-			ttl:     msg.TTL,
+			ttl:     msg.GetTtl(),
 			addedAt: time.Now(),
 		})
 		b.mu.Unlock()
-		b.logger.Debug("Subscribed", "name", msg.Name, "ttl", msg.TTL, "from", sender.String())
+		b.logger.Debug("Subscribed", "name", msg.GetName(), "ttl", msg.GetTtl(), "from", sender.String())
 	}
 
-	if reg, ok := b.registry.Get(msg.Name); ok && reg.ValueType != surp.ValueUndefined {
-		isMsg := &surp.MessageIS{
-			TTL:       reg.TTL,
-			Name:      reg.Name,
-			ValueType: reg.ValueType,
-			Value:     reg.Value,
-			Metadata:  reg.Metadata,
+	if reg, ok := b.registry.Get(msg.GetName()); ok && reg.Value != nil {
+		isMsg := &pb.MessageIS{
+			Ttl:      reg.TTL,
+			Name:     reg.Name,
+			Value:    reg.Value,
+			Metadata: reg.Metadata,
 		}
 		err := b.socket.SendMessageIS(sender, isMsg)
 		if err != nil {
-			b.logger.Debug("Failed to send IS to subscriber", "name", msg.Name, "to", sender.String(), "err", err)
+			b.logger.Debug("Failed to send IS to subscriber", "name", msg.GetName(), "to", sender.String(), "err", err)
 			return
 		}
-		b.logger.Debug("Sent IS to subscriber", "name", msg.Name, "to", sender.String())
+		b.logger.Debug("Sent IS to subscriber", "name", msg.GetName(), "to", sender.String())
 	}
 }
 
-func (b *Binding) OnMessageSET(msg *surp.MessageSET, sender *net.UDPAddr) {
+func (b *Binding) OnMessageSET(msg *pb.MessageSET, sender *net.UDPAddr) {
 	reg, ok := b.registry.Get(msg.Name)
 	if !ok || reg.Source == nil {
 		b.logger.Debug("Cannot route SET — register not found or has no provider", "name", msg.Name)
@@ -143,5 +141,5 @@ func (b *Binding) OnMessageSET(msg *surp.MessageSET, sender *net.UDPAddr) {
 	b.logger.Debug("Sent SET to provider", "name", msg.Name, "provider", reg.Source.String())
 }
 
-func (b *Binding) OnMessageIS(msg *surp.MessageIS, sender *net.UDPAddr) {
+func (b *Binding) OnMessageIS(msg *pb.MessageIS, sender *net.UDPAddr) {
 }

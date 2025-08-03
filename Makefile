@@ -4,3 +4,8 @@ wireshark-install:
 
 wireshark-uninstall:
 	rm -f ${HOME}/.local/lib/wireshark/plugins/surp.lua
+
+proto:
+	mkdir -p pkg/pb
+	protoc --go_out=. --go_opt=paths=source_relative proto/surp.proto
+	mv proto/surp.pb.go pkg/pb/surp.pb.go

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package surp;
+
+option go_package = "github.com/burgrp/surp-go/pkg/pb";
+
+enum MetadataKey {
+  METADATA_KEY_UNSPECIFIED = 0;
+  META_RO = 1;
+  META_MIN = 2;
+  META_MAX = 3;
+  META_UNIT = 4;
+  META_DESCRIPTION = 5;
+}
+
+message Value {
+  oneof value {
+    bool bool_value = 1;
+    uint64 u64_value = 2;
+    int64 s64_value = 3;
+    double f64_value = 4;
+    string str_value = 5;
+  }
+}
+
+message MetadataEntry {
+  MetadataKey key = 1;
+  Value value = 2;
+}
+
+message MessageIS {
+  uint32 ttl = 1;
+  string name = 2;
+  Value value = 3;
+  repeated MetadataEntry metadata = 4;
+}
+
+message MessageSET {
+  string name = 1;
+  Value value = 2;
+}
+
+message MessageGET {
+  uint32 ttl = 1;
+  string name = 2;
+}
+
+message SurpMessage {
+  oneof msg {
+    MessageIS is = 1;
+    MessageSET set = 2;
+    MessageGET get = 3;
+  }
+}

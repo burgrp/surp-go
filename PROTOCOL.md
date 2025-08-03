@@ -44,27 +44,11 @@ SURP enables:
 ## Transport
 
 - All messages are **UDP datagrams**
+- Messages are encoded using **Protocol Buffers**
+- Each datagram contains a `SurpMessage` with a `oneof` selecting
+  `IS`, `SET`, or `GET`
 - No handshaking or session state
 - Registry is the central node; providers and consumers do not communicate directly
-
----
-
-## Message Header (Common to All Messages)
-
-| Field    | Size | Description                      |
-|----------|------|----------------------------------|
-| Version  | u8   | Protocol version (e.g. `0x01`)    |
-| MsgType  | u8   | Message type (see below)         |
-
----
-
-## Message Types
-
-| MsgType | Name | Direction | Description |
-|---------|------|-----------|-------------|
-| 0x01    | IS   | Provider → Registry → Consumer | Register announcement or update |
-| 0x02    | SET  | Consumer → Registry → Provider | Request to set register value |
-| 0x03    | GET  | Consumer → Registry | Subscribe to register updates or request value |
 
 ---
 
@@ -74,17 +58,14 @@ Used by providers to send register value, metadata, and TTL. Also used by the re
 
 ### Format
 
-| Field             | Type         | Description                                 |
-|------------------|--------------|---------------------------------------------|
-| TTL              | u16          | In seconds. 0 = static (never expires)      |
-| NameLen          | u8           | Length of name                              |
-| Name             | UTF-8 bytes  | Register name (max 255 bytes)               |
-| ValueType        | u8           | Type of value (see below)                   |
-| Value            | variable     | Encoded based on ValueType                  |
-| MetadataCount    | u8           | Number of metadata entries                  |
-| Metadata Entries | list         | See metadata format                         |
+| Field             | Type  | Description                                 |
+|------------------|-------|---------------------------------------------|
+| TTL              | u32   | In seconds. 0 = static (never expires)      |
+| Name             | string| Register name                               |
+| Value            | Value | Register value                              |
+| Metadata         | list  | See metadata format                         |
 
-If `ValueType == 0x00` (UNDEFINED), no value is included.
+If `Value` is unset, the register value is considered undefined.
 
 Registry sends `IS` message with value`undefined` when last `IS` message from the provider expires.
 
@@ -96,12 +77,10 @@ Used by consumers to request a value change. Forwarded by registry to the approp
 
 ### Format
 
-| Field        | Type         |
-|--------------|--------------|
-| NameLen      | u8           |
-| Name         | UTF-8 bytes  |
-| ValueType    | u8           |
-| Value        | variable     |
+| Field | Type  |
+|-------|-------|
+| Name  | string|
+| Value | Value |
 
 ---
 
@@ -111,11 +90,10 @@ Used by consumers to request or subscribe to a register.
 
 ### Format
 
-| Field       | Type         | Description                              |
-|-------------|--------------|------------------------------------------|
-| TTL         | u16          | In seconds. 0 = one-shot response only   |
-| NameLen     | u8           |
-| Name        | UTF-8 bytes  | Register name                            |
+| Field | Type  | Description                            |
+|-------|-------|----------------------------------------|
+| TTL   | u32   | In seconds. 0 = one-shot response only |
+| Name  | string| Register name                          |
 
 - When received, registry immediately replies with an `IS` message.
 - If registry does not know the register, it replies with value `undefined`.
@@ -124,23 +102,15 @@ Used by consumers to request or subscribe to a register.
 
 ---
 
-## Value Types (ValueType enum)
+## Value Representation
 
-| Code | Type          | Encoding                          |
-|------|---------------|-----------------------------------|
-| 0x00 | UNDEFINED     | No value data                     |
-| 0x01 | BOOL          | 1 byte: 0x00 = false, 0x01 = true |
-| 0x02 | U8            | 1 byte unsigned                   |
-| 0x03 | S8            | 1 byte signed                     |
-| 0x04 | U16           | 2 bytes, big-endian               |
-| 0x05 | S16           | 2 bytes, big-endian               |
-| 0x06 | U32           | 4 bytes, big-endian               |
-| 0x07 | S32           | 4 bytes, big-endian               |
-| 0x08 | U64           | 8 bytes, big-endian               |
-| 0x09 | S64           | 8 bytes, big-endian               |
-| 0x0A | FLOAT64       | IEEE754, 8 bytes                  |
-| 0x0B | SHORT_STRING  | u8 length + UTF-8 string          |
-| 0x0C | LONG_STRING   | u16 length (BE) + UTF-8 string    |
+Values are encoded using a `oneof` that can carry one of:
+
+- `bool_value`
+- `u64_value`
+- `s64_value`
+- `f64_value`
+- `str_value`
 
 ---
 
@@ -148,21 +118,20 @@ Used by consumers to request or subscribe to a register.
 
 Each IS message includes a list of metadata entries:
 
-| Field        | Type         | Description                             |
-|--------------|--------------|-----------------------------------------|
-| Key          | u8           | See metadata keys below                 |
-| ValueType    | u8           | Type of metadata value                  |
-| Value        | variable     | Same encoding rules as register values  |
+| Field | Type | Description             |
+|-------|------|-------------------------|
+| Key   | u8   | See metadata keys below |
+| Value | Value| Metadata value          |
 
 ### Metadata Keys
 
-| Key  | Name        | ValueType      | Description                         |
-|------|-------------|----------------|-------------------------------------|
-| 0x01 | RO          | BOOL           | Read only flag                      |
-| 0x02 | MIN         | Matches reg.   | Minimum allowed value               |
-| 0x03 | MAX         | Matches reg.   | Maximum allowed value               |
-| 0x04 | UNIT        | SHORT_STRING   | Display unit (e.g., "°C")           |
-| 0x05 | DESCRIPTION | LONG_STRING    | Human-readable description          |
+| Key  | Name        | Type          | Description                         |
+|------|-------------|---------------|-------------------------------------|
+| 0x01 | RO          | bool         | Read only flag                      |
+| 0x02 | MIN         | matches reg. | Minimum allowed value               |
+| 0x03 | MAX         | matches reg. | Maximum allowed value               |
+| 0x04 | UNIT        | string       | Display unit (e.g., "°C")           |
+| 0x05 | DESCRIPTION | string       | Human-readable description          |
 
 ---
 
@@ -186,8 +155,6 @@ Each IS message includes a list of metadata entries:
 ---
 
 ## Notes
-
-- All integers are encoded in **big-endian (network order)**
 - No acks or errors are defined; `SET` is a best-effort request
 - Providers may clip or ignore `SET` values as appropriate
 - Registry keeps no persistent state; protocol is robust to restarts

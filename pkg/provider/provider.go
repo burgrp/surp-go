@@ -6,38 +6,37 @@ import (
 	"time"
 
 	surp "github.com/burgrp/surp-go/pkg"
+	pb "github.com/burgrp/surp-go/pkg/pb"
 )
 
 type Provider struct {
 	socket    *surp.Socket
 	registry  *net.UDPAddr
-	is        surp.MessageIS
-	changed   chan any
-	validator func(value any) any
+	is        pb.MessageIS
+	changed   chan *pb.Value
+	validator func(value *pb.Value) *pb.Value
 }
 
 func NewProvider(
 	socket *surp.Socket,
 	registry *net.UDPAddr,
-	TTL uint16,
+	TTL uint32,
 	Name string,
-	ValueType surp.ValueType,
-	Value any,
-	Metadata []surp.MetadataEntry,
-	validator func(value any) any,
+	Value *pb.Value,
+	Metadata []*pb.MetadataEntry,
+	validator func(value *pb.Value) *pb.Value,
 ) *Provider {
 
 	provider := &Provider{
 		socket:   socket,
 		registry: registry,
-		is: surp.MessageIS{
-			TTL:       TTL,
-			Name:      Name,
-			ValueType: ValueType,
-			Value:     Value,
-			Metadata:  Metadata,
+		is: pb.MessageIS{
+			Ttl:      TTL,
+			Name:     Name,
+			Value:    Value,
+			Metadata: Metadata,
 		},
-		changed:   make(chan any),
+		changed:   make(chan *pb.Value),
 		validator: validator,
 	}
 
@@ -52,7 +51,7 @@ func (p *Provider) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Duration(p.is.TTL) * time.Second / 2):
+		case <-time.After(time.Duration(p.is.Ttl) * time.Second / 2):
 			p.sendIs()
 		case newValue := <-p.changed:
 			p.is.Value = newValue
@@ -67,61 +66,49 @@ func (p *Provider) sendIs() {
 }
 
 // OnMessageGET implements surp.MessageListener.
-func (p *Provider) OnMessageGET(msg *surp.MessageGET, sender *net.UDPAddr) {
+func (p *Provider) OnMessageGET(msg *pb.MessageGET, sender *net.UDPAddr) {
 }
 
 // OnMessageIS implements surp.MessageListener.
-func (p *Provider) OnMessageIS(msg *surp.MessageIS, sender *net.UDPAddr) {
+func (p *Provider) OnMessageIS(msg *pb.MessageIS, sender *net.UDPAddr) {
 }
 
 // OnMessageSET implements surp.MessageListener.
-func (p *Provider) OnMessageSET(msg *surp.MessageSET, sender *net.UDPAddr) {
-	if msg.Name != p.is.Name {
+func (p *Provider) OnMessageSET(msg *pb.MessageSET, sender *net.UDPAddr) {
+	if msg.GetName() != p.is.GetName() {
 		return
 	}
 
-	if msg.ValueType != p.is.ValueType {
-		return
-	}
-
+	val := msg.GetValue()
 	if p.validator != nil {
-		msg.Value = p.validator(msg.Value)
+		val = p.validator(val)
 	}
 
-	p.is.Value = msg.Value
+	p.is.Value = val
 
 	p.sendIs()
 }
 
-func (p *Provider) SetValue(value any) {
+func (p *Provider) SetValue(value *pb.Value) {
 	p.changed <- value
 }
 
-func (p *Provider) GetValue() any {
+func (p *Provider) GetValue() *pb.Value {
 	return p.is.Value
 }
 
 func (p *Provider) GetName() string {
-	return p.is.Name
+	return p.is.GetName()
 }
 
-func (p *Provider) GetTTL() uint16 {
-	return p.is.TTL
+func (p *Provider) GetTTL() uint32 {
+	return p.is.GetTtl()
 }
 
-func (p *Provider) GetValueType() surp.ValueType {
-	return p.is.ValueType
+func (p *Provider) GetMetadata() []*pb.MetadataEntry {
+	return p.is.GetMetadata()
 }
 
-func (p *Provider) GetMetadata() []surp.MetadataEntry {
-	return p.is.Metadata
-}
-
-func (p *Provider) GetMetadataByKey(key surp.MetadataKey) any {
-	for _, entry := range p.is.Metadata {
-		if entry.Key == key {
-			return entry.Value
-		}
-	}
-	return nil
+func (p *Provider) GetMetadataByKey(key pb.MetadataKey) *pb.Value {
+	return surp.GetMetadataValue(p.is.GetMetadata(), key)
 }
